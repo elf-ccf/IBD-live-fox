@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ibd-live-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ibd_live
+      POSTGRES_USER: ibd_user
+      POSTGRES_PASSWORD: ibd_password
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - ibd_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ibd_user -d ibd_live
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ibd_postgres_data:
