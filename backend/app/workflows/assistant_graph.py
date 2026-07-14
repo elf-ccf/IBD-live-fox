@@ -1,3 +1,4 @@
+import re
 from typing import TypedDict
 
 from langgraph.graph import StateGraph
@@ -18,6 +19,87 @@ class AgentState(TypedDict):
     web_research: str
     answer: AssistantAnswer | None
     errors: list[str]
+
+
+def _needs_extended_details(
+    command_type: str,
+    question: str,
+) -> bool:
+    if command_type in {
+        "differential",
+        "missing_information",
+    }:
+        return True
+
+    lowered = question.lower()
+
+    return any(
+        token in lowered
+        for token in [
+            "key findings",
+            "differential",
+            "missing information",
+            "limitations",
+            "full report",
+            "full case",
+            "detailed analysis",
+        ]
+    )
+
+
+def _strip_boilerplate(text: str) -> str:
+    cleaned = text.strip()
+
+    patterns = [
+        r"\bthis\s+is\s+ai-generated\b[\s\S]*?([.?!]|$)",
+        r"\bthis\s+ai-generated\b[\s\S]*?([.?!]|$)",
+        r"\bnot\s+a\s+final\s+diagnosis\b[\s\S]*?([.?!]|$)",
+    ]
+
+    for pattern in patterns:
+        cleaned = re.sub(
+            pattern,
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _normalize_answer_shape(
+    answer: AssistantAnswer,
+    command_type: str,
+    question: str,
+) -> AssistantAnswer:
+    include_extended = _needs_extended_details(
+        command_type,
+        question,
+    )
+
+    answer.answer = _strip_boilerplate(answer.answer)
+    answer.audience_script = _strip_boilerplate(
+        answer.audience_script
+    )
+
+    if not answer.audience_script:
+        answer.audience_script = answer.answer
+
+    if not include_extended:
+        answer.key_findings = []
+        answer.differential = []
+        answer.missing_information = []
+        answer.limitations = ""
+        answer.case_summary = (
+            answer.case_summary.strip()[:180]
+            if answer.case_summary.strip()
+            else ""
+        )
+
+    answer.sources = (answer.sources or [])[:3]
+
+    return answer
 
 
 def classify_command(state: AgentState) -> dict:
@@ -167,7 +249,35 @@ def generate_answer(state: AgentState) -> dict:
         "Clearly separate meeting facts from external information. "
     )
 
+    exact_talking_rules = (
+        "CRITICAL STYLE: Answer only the exact question the user asked. "
+        "Always use web research, but do not dump extra research details. "
+        "Do not generate a full report unless the user specifically asks for one. "
+        "Do not include key findings, differential, missing information, or limitations unless explicitly requested. "
+        "For normal questions, use empty lists for key_findings, differential, and missing_information. "
+        "Keep case_summary empty or one very short context sentence. "
+        "Put the complete direct response in the answer field. "
+        "The audience_script must be only the direct spoken answer. "
+        "Do not start with 'This AI-generated'. "
+        "Do not say 'not a final diagnosis' unless the user specifically asks for clinical diagnosis or interpretation. "
+        "Do not add disclaimers unless needed. "
+        "Keep the audience_script under 45 words. "
+        "Use at most 3 sources. "
+        "The UI/API already has a separate AI voice disclosure. "
+    )
+
+    no_repeated_disclaimer_rules = (
+        "Do not include boilerplate disclaimers in answer or audience_script. "
+        "Do not say 'This is AI-generated'. "
+        "Do not say 'not a final diagnosis' unless the user specifically asks for diagnosis, treatment advice, or clinical decision-making. "
+        "For ordinary summary, explanation, latest evidence, or meeting questions, answer directly. "
+        "The voice should speak only the direct answer. "
+        "The API already contains a separate disclosure field, so do not repeat it in spoken text. "
+    )
+
     developer_instructions = (
+        no_repeated_disclaimer_rules +
+        exact_talking_rules +
         direct_answer_rules +
         f"You are a medical education assistant for the "
         f"{settings.app_name} system.\n\n"
@@ -194,9 +304,8 @@ def generate_answer(state: AgentState) -> dict:
         f"11. Put all source information only in the sources field.\n"
         f"12. The audience_script must:\n"
         f"    - be concise and suitable for spoken delivery;\n"
-        f"    - state the output is AI-generated;\n"
-        f"    - state it is for educational discussion only;\n"
-        f"    - state it is not a final diagnosis;\n"
+        f"    - speak only the direct answer;\n"
+        f"    - avoid boilerplate disclaimers unless explicitly requested;\n"
         f"    - NOT read long URLs aloud.\n"
     )
 
@@ -231,8 +340,14 @@ def generate_answer(state: AgentState) -> dict:
                 "OpenAI did not return a structured answer."
             )
 
+        normalized_answer = _normalize_answer_shape(
+            answer=response.output_parsed,
+            command_type=state["command_type"],
+            question=state["question"],
+        )
+
         return {
-            "answer": response.output_parsed,
+            "answer": normalized_answer,
             "errors": errors,
         }
 

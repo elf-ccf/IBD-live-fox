@@ -14,3 +14,32 @@ generated_audio/
 
 .vscode/
 .idea/
+
+webex-session.env
+.webex-wake-processed.json
+
+# Local secrets/session files
+.env
+.env.*
+!.env.example
+webex-session.env
+
+# Python
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend
+node_modules/
+dist/
+
+# Generated media
+generated_audio/
+uploads/
+*.mp3
+
+# Temporary patch/backup files
+*.before-*
+*.backup

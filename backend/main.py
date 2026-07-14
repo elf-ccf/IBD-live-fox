@@ -6,11 +6,13 @@ from sqlalchemy import text
 
 from app.api.assistant import router as assistant_router
 from app.api.recall import router as recall_router
+from app.api.recall_output import router as recall_output_router
 from app.api.sessions import router as sessions_router
 from app.api.speech import router as speech_router
 from app.core.config import settings
 from app.db.database import SessionLocal
 from app.db.init_db import initialize_database
+from app.services.webex_auto_agent import webex_auto_agent_loop
 
 
 @asynccontextmanager
@@ -41,6 +43,7 @@ app.include_router(sessions_router)
 app.include_router(assistant_router)
 app.include_router(speech_router)
 app.include_router(recall_router)
+app.include_router(recall_output_router)
 
 
 @app.get("/")
@@ -80,3 +83,11 @@ def health_check() -> dict:
         "tts_model": settings.openai_tts_model,
         "tts_voice": settings.openai_tts_voice,
     }
+
+
+@app.on_event("startup")
+async def start_webex_auto_agent():
+    import asyncio
+
+    asyncio.create_task(webex_auto_agent_loop())
+

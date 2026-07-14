@@ -13,24 +13,101 @@ import {
 } from "react";
 
 
-const WAKE_PHRASE = "hey ai";
+const WAKE_PHRASES = [
+  "hey fox",
+  "hi fox",
+  "okay fox",
+  "ok fox",
+  "hey box",
+  "hey folks",
+  "hey fax",
+  "a fox",
+  "fox",
+];
+
+
+function cleanText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 
 function extractCommand(text) {
-  const original = text.trim();
-  const lower = original.toLowerCase();
-  const position = lower.indexOf(WAKE_PHRASE);
+  const original = String(text || "").trim();
 
-  if (position < 0) {
+  if (!original) {
     return null;
   }
 
-  const command = original
-    .slice(position + WAKE_PHRASE.length)
-    .replace(/^[\s,.:;!?—-]+/, "")
-    .trim();
+  const cleaned = cleanText(original);
 
-  return command || null;
+  for (const wakePhrase of WAKE_PHRASES) {
+    const cleanedWake = cleanText(wakePhrase);
+    const index = cleaned.indexOf(cleanedWake);
+
+    if (index >= 0) {
+      const beforeWake = cleaned.slice(0, index);
+      const afterWakeIndex =
+        beforeWake.length + cleanedWake.length;
+
+      const originalWords = original.split(/\s+/);
+      const cleanedWords = cleaned.split(/\s+/);
+      const wakeWords = cleanedWake.split(/\s+/);
+
+      let startWordIndex = -1;
+
+      for (
+        let i = 0;
+        i <= cleanedWords.length - wakeWords.length;
+        i += 1
+      ) {
+        const chunk = cleanedWords
+          .slice(i, i + wakeWords.length)
+          .join(" ");
+
+        if (chunk === cleanedWake) {
+          startWordIndex = i + wakeWords.length;
+          break;
+        }
+      }
+
+      if (startWordIndex >= 0) {
+        const command = originalWords
+          .slice(startWordIndex)
+          .join(" ")
+          .replace(/^[\s,.:;!?—-]+/, "")
+          .trim();
+
+        return command || null;
+      }
+
+      const fallbackCommand = original
+        .slice(afterWakeIndex)
+        .replace(/^[\s,.:;!?—-]+/, "")
+        .trim();
+
+      return fallbackCommand || null;
+    }
+  }
+
+  /*
+    If voice mode is already enabled and the browser dropped
+    the wake phrase, use the final recognized sentence as the
+    command. This makes the experience feel Siri-like after
+    the user has explicitly enabled the microphone.
+  */
+  const looksLikeQuestion =
+    /\b(what|why|how|when|where|who|can|could|tell|explain|summarize|search|compare|give|show)\b/i
+      .test(original);
+
+  if (looksLikeQuestion) {
+    return original;
+  }
+
+  return null;
 }
 
 
@@ -42,7 +119,6 @@ export default function VoiceAssistant({
 }) {
   const recognitionRef = useRef(null);
   const enabledRef = useRef(false);
-  const mountedRef = useRef(true);
   const commandRunningRef = useRef(false);
 
   const [supported, setSupported] =
@@ -54,21 +130,17 @@ export default function VoiceAssistant({
   const [listening, setListening] =
     useState(false);
 
-  const [transcript, setTranscript] =
+  const [liveWords, setLiveWords] =
     useState("");
 
-  const [detectedCommand, setDetectedCommand] =
+  const [lastHeard, setLastHeard] =
     useState("");
 
-  const [error, setError] = useState("");
+  const [lastCommand, setLastCommand] =
+    useState("");
 
-
-  const canListen =
-    enabled &&
-    !disabled &&
-    !busy &&
-    !speaking &&
-    !commandRunningRef.current;
+  const [error, setError] =
+    useState("");
 
 
   const startRecognition = useCallback(() => {
@@ -86,55 +158,41 @@ export default function VoiceAssistant({
     try {
       recognitionRef.current.start();
     } catch {
-      // Recognition is probably already active.
+      // Already active.
     }
   }, [disabled, busy, speaking]);
 
 
-  const stopRecognition = useCallback(
-    (abort = false) => {
-      if (!recognitionRef.current) {
-        return;
-      }
-
-      try {
-        if (abort) {
-          recognitionRef.current.abort();
-        } else {
-          recognitionRef.current.stop();
-        }
-      } catch {
-        // Recognition is already stopped.
-      }
-    },
-    []
-  );
+  const stopRecognition = useCallback(() => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      // Already stopped.
+    }
+  }, []);
 
 
-  const activateVoice = useCallback(() => {
+  function enableVoice() {
     setError("");
     setEnabled(true);
     enabledRef.current = true;
 
     window.setTimeout(
       startRecognition,
-      150
+      180
     );
-  }, [startRecognition]);
+  }
 
 
-  const deactivateVoice = useCallback(() => {
+  function pauseVoice() {
     enabledRef.current = false;
     setEnabled(false);
     setListening(false);
-    setTranscript("");
-    stopRecognition(true);
-  }, [stopRecognition]);
+    stopRecognition();
+  }
 
 
   useEffect(() => {
-    mountedRef.current = true;
-
     const Recognition =
       window.SpeechRecognition ||
       window.webkitSpeechRecognition;
@@ -152,16 +210,12 @@ export default function VoiceAssistant({
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      if (!mountedRef.current) {
-        return;
-      }
-
       setListening(true);
       setError("");
     };
 
     recognition.onresult = async (event) => {
-      let visibleText = "";
+      let interimText = "";
       let finalText = "";
 
       for (
@@ -170,49 +224,67 @@ export default function VoiceAssistant({
         index += 1
       ) {
         const result = event.results[index];
-        const spokenText =
+        const text =
           result[0]?.transcript || "";
 
-        visibleText += `${spokenText} `;
-
         if (result.isFinal) {
-          finalText += `${spokenText} `;
+          finalText += `${text} `;
+        } else {
+          interimText += `${text} `;
         }
       }
 
-      const displayed = visibleText.trim();
+      const visible =
+        (finalText || interimText).trim();
 
-      if (displayed) {
-        setTranscript(displayed);
+      if (visible) {
+        setLiveWords(visible);
+        setLastHeard(visible);
       }
 
       if (!finalText.trim()) {
         return;
       }
 
-      const command = extractCommand(finalText);
+      const command =
+        extractCommand(finalText);
 
-      if (!command || commandRunningRef.current) {
+      if (
+        !command ||
+        commandRunningRef.current
+      ) {
         return;
       }
 
       commandRunningRef.current = true;
 
-      setDetectedCommand(command);
-      setTranscript("");
+      setLastCommand(command);
+      setLiveWords("");
       setListening(false);
 
-      stopRecognition(true);
+      stopRecognition();
 
       try {
         await onCommand(command);
       } catch (caughtError) {
         setError(
           caughtError?.message ||
-            "The voice command could not be processed."
+            "Unable to process voice command."
         );
       } finally {
         commandRunningRef.current = false;
+
+        if (
+          enabledRef.current &&
+          !disabled &&
+          !busy &&
+          !speaking
+        ) {
+          window.setTimeout(
+            startRecognition,
+            900
+          );
+        }
       }
     };
 
@@ -226,24 +298,20 @@ export default function VoiceAssistant({
 
       if (event.error === "not-allowed") {
         setError(
-          "Microphone access was denied. Allow microphone access in the browser and try again."
+          "Microphone permission denied."
         );
 
-        enabledRef.current = false;
         setEnabled(false);
+        enabledRef.current = false;
         return;
       }
 
       setError(
-        `Voice recognition error: ${event.error}`
+        `Microphone error: ${event.error}`
       );
     };
 
     recognition.onend = () => {
-      if (!mountedRef.current) {
-        return;
-      }
-
       setListening(false);
 
       if (
@@ -255,7 +323,7 @@ export default function VoiceAssistant({
       ) {
         window.setTimeout(
           startRecognition,
-          500
+          800
         );
       }
     };
@@ -263,13 +331,12 @@ export default function VoiceAssistant({
     recognitionRef.current = recognition;
 
     return () => {
-      mountedRef.current = false;
       enabledRef.current = false;
 
       try {
         recognition.abort();
       } catch {
-        // Ignore unmount cleanup errors.
+        // Ignore cleanup errors.
       }
     };
   }, [
@@ -287,113 +354,95 @@ export default function VoiceAssistant({
       return;
     }
 
-    if (disabled || busy || speaking) {
-      stopRecognition(true);
-      setListening(false);
+    if (busy || speaking || disabled) {
+      stopRecognition();
       return;
     }
 
     window.setTimeout(
       startRecognition,
-      500
+      800
     );
   }, [
-    disabled,
     busy,
     speaking,
+    disabled,
     startRecognition,
     stopRecognition,
   ]);
 
 
-  function getState() {
-    if (speaking) {
-      return {
-        label: "Speaking",
-        detail: "Playing the AI response",
-        icon: Volume2,
-        className: "speaking",
-      };
-    }
-
-    if (busy) {
-      return {
-        label: "Thinking",
-        detail: "Searching and preparing an answer",
-        icon: LoaderCircle,
-        className: "thinking",
-      };
-    }
-
-    if (listening && enabled) {
-      return {
-        label: "Listening",
-        detail: 'Say “Hey AI” followed by your question',
-        icon: Mic,
-        className: "listening",
-      };
-    }
-
-    if (enabled) {
-      return {
-        label: "Waking up",
-        detail: "Preparing microphone recognition",
-        icon: LoaderCircle,
-        className: "thinking",
-      };
-    }
-
-    return {
-      label: "Microphone off",
-      detail: "Allow microphone once, then say “Hey AI…”",
-      icon: MicOff,
-      className: "off",
-    };
-  }
-
-
   if (!supported) {
     return (
-      <div className="wake-control unavailable">
-        <MicOff size={18} />
+      <section className="wake-control unavailable">
+        <MicOff size={20} />
 
-        <div>
+        <div className="wake-status">
           <strong>Voice unavailable</strong>
-          <span>Use Chrome or Edge, or type below.</span>
+          <span>
+            Use Chrome or Edge, or type your question.
+          </span>
         </div>
-      </div>
+      </section>
     );
   }
 
 
-  const state = getState();
-  const StateIcon = state.icon;
+  let label = "Microphone off";
+  let detail =
+    "Allow microphone once, then say “Hey Fox…”";
+  let Icon = MicOff;
+  let stateClass = "off";
+
+  if (speaking) {
+    label = "Speaking";
+    detail = "Playing the AI response";
+    Icon = Volume2;
+    stateClass = "speaking";
+  } else if (busy) {
+    label = "Thinking";
+    detail = "Searching and preparing an answer";
+    Icon = LoaderCircle;
+    stateClass = "thinking";
+  } else if (listening) {
+    label = "Listening";
+    detail =
+      "Say “Hey Fox” followed by your question";
+    Icon = Mic;
+    stateClass = "listening";
+  } else if (enabled) {
+    label = "Ready";
+    detail =
+      "Waiting for the microphone to restart";
+    Icon = LoaderCircle;
+    stateClass = "thinking";
+  }
 
 
   return (
-    <aside
-      className={`wake-control ${state.className}`}
+    <section
+      className={`wake-control ${stateClass}`}
       aria-live="polite"
     >
       <button
         type="button"
         className="wake-orb"
+        onClick={
+          enabled
+            ? pauseVoice
+            : enableVoice
+        }
+        disabled={disabled && !enabled}
         aria-label={
           enabled
             ? "Pause hands-free voice mode"
-            : "Turn on hands-free voice mode"
-        }
-        disabled={disabled && !enabled}
-        onClick={
-          enabled
-            ? deactivateVoice
-            : activateVoice
+            : "Allow microphone for hands-free mode"
         }
       >
-        <StateIcon
-          size={23}
+        <Icon
+          size={22}
           className={
-            state.className === "thinking"
+            stateClass === "thinking"
               ? "spin"
               : ""
           }
@@ -401,18 +450,24 @@ export default function VoiceAssistant({
       </button>
 
       <div className="wake-status">
-        <strong>{state.label}</strong>
-        <span>{state.detail}</span>
+        <strong>{label}</strong>
+        <span>{detail}</span>
 
-        {transcript && listening && (
+        {liveWords && (
           <p className="wake-heard">
-            {transcript}
+            Heard: “{liveWords}”
           </p>
         )}
 
-        {detectedCommand && (
+        {!liveWords && lastHeard && (
+          <p className="wake-heard muted">
+            Last heard: “{lastHeard}”
+          </p>
+        )}
+
+        {lastCommand && (
           <p className="wake-command">
-            Asked: “{detectedCommand}”
+            Command: “{lastCommand}”
           </p>
         )}
 
@@ -428,12 +483,13 @@ export default function VoiceAssistant({
         className="wake-toggle"
         onClick={
           enabled
-            ? deactivateVoice
-            : activateVoice
+            ? pauseVoice
+            : enableVoice
         }
+        disabled={disabled && !enabled}
       >
-        {enabled ? "Pause" : "Allow microphone"}
+        {enabled ? "Pause" : "Allow mic"}
       </button>
-    </aside>
+    </section>
   );
 }

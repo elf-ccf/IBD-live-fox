@@ -197,6 +197,8 @@ export default function App() {
 
   const audioRef = useRef(null);
 
+  const playedAudioUrlRef = useRef("");
+
 
   useEffect(() => {
     getHealth()
@@ -209,7 +211,6 @@ export default function App() {
         );
       });
   }, []);
-
 
   const refreshTranscript = useCallback(
     async (targetSessionId = sessionId) => {
@@ -287,6 +288,34 @@ export default function App() {
     refreshTranscript,
     refreshWebexStatus,
   ]);
+  useEffect(() => {
+    const audioUrl = analysisResult?.fullAudioUrl;
+
+    if (!audioUrl || !audioRef.current) {
+      return undefined;
+    }
+
+    if (playedAudioUrlRef.current === audioUrl) {
+      return undefined;
+    }
+
+    playedAudioUrlRef.current = audioUrl;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        audioRef.current.load();
+        await audioRef.current.play();
+      } catch {
+        setMessage(
+          "Answer ready. Browser blocked autoplay, so select Play response once."
+        );
+      }
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [analysisResult?.fullAudioUrl]);
 
 
   async function runAnalysis(
@@ -309,12 +338,6 @@ export default function App() {
         speak: true,
       });
 
-      if (result.audio_url) {
-        setWorkflowStage(
-          "generating_voice"
-        );
-      }
-
       const completeResult = {
         ...result,
         fullAudioUrl: getAudioUrl(
@@ -327,21 +350,10 @@ export default function App() {
 
       if (showCompletionMessage) {
         setMessage(
-          "Analysis completed. Continue asking follow-up questions below."
+          completeResult.fullAudioUrl
+            ? "Answer ready. Speaking now."
+            : "Answer ready."
         );
-      }
-
-      if (result.audio_url && autoPlay) {
-        window.setTimeout(async () => {
-          try {
-            audioRef.current?.load();
-            await audioRef.current?.play();
-          } catch {
-            setMessage(
-              "Analysis completed. Select Play response to hear the AI-generated audio."
-            );
-          }
-        }, 350);
       }
 
       return completeResult;
@@ -684,7 +696,7 @@ export default function App() {
 
           <div>
             <strong>
-              IBD Live AI Discussant
+              IBD Live Fox Discussant
             </strong>
 
             <span>

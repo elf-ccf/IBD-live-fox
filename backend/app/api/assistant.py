@@ -162,7 +162,7 @@ def ask_assistant(
     if request.speak:
         try:
             audio_file_name, _ = generate_speech(
-                answer.audience_script
+                answer.answer
             )
 
             response_record.audio_file_name = (

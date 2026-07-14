@@ -221,3 +221,14 @@ export function getAudioUrl(audioUrl) {
 
   return `${API_BASE_URL}${audioUrl}`;
 }
+
+
+export function createSpeech(text) {
+  return request("/api/speech", {
+    method: "POST",
+
+    body: JSON.stringify({
+      text,
+    }),
+  });
+}
