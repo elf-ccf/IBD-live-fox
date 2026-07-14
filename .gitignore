@@ -1,0 +1,33 @@
+.env
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python environments and cache
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend dependencies and builds
+node_modules/
+dist/
+
+# Generated and uploaded content
+generated_audio/
+uploads/
+*.mp3
+
+# Temporary files and backups
+*.before-*
+*.backup
+check-output.txt
+frontend*error.txt
+frontend-build-error.txt*
+# Editor and OS files
+.vscode/
+.i*ea/
+.DS_Store
