@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 
 
-PROJECT = Path("/workspaces/ibd-live/ibd-live-ai")
+PROJECT = Path("/workspaces/ibd-live")
 BACKEND = PROJECT / "backend"
 
 

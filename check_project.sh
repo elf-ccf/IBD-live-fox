@@ -2,7 +2,7 @@
 
 set -e
 
-PROJECT="/workspaces/ibd-live/ibd-live-ai"
+PROJECT="/workspaces/ibd-live"
 
 echo
 echo "=== Checking backend ==="

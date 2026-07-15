@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PROJECT="/workspaces/ibd-live/ibd-live-ai"
+PROJECT="/workspaces/ibd-live"
 BACKEND="$PROJECT/backend"
 FRONTEND="$PROJECT/frontend"
 ENV_FILE="$BACKEND/.env"

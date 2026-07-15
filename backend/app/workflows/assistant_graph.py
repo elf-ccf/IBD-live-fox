@@ -259,7 +259,7 @@ def generate_answer(state: AgentState) -> dict:
         "Put the complete direct response in the answer field. "
         "The audience_script must be only the direct spoken answer. "
         "Do not start with 'This AI-generated'. "
-        "Do not say 'not a final diagnosis' unless the user specifically asks for clinical diagnosis or interpretation. "
+        "Do not say '' unless the user specifically asks for clinical diagnosis or interpretation. "
         "Do not add disclaimers unless needed. "
         "Keep the audience_script under 45 words. "
         "Use at most 3 sources. "
@@ -268,14 +268,33 @@ def generate_answer(state: AgentState) -> dict:
 
     no_repeated_disclaimer_rules = (
         "Do not include boilerplate disclaimers in answer or audience_script. "
-        "Do not say 'This is AI-generated'. "
-        "Do not say 'not a final diagnosis' unless the user specifically asks for diagnosis, treatment advice, or clinical decision-making. "
+        "Do not say ''. "
+        "Do not say '' unless the user specifically asks for diagnosis, treatment advice, or clinical decision-making. "
         "For ordinary summary, explanation, latest evidence, or meeting questions, answer directly. "
         "The voice should speak only the direct answer. "
         "The API already contains a separate disclosure field, so do not repeat it in spoken text. "
     )
 
+    exact_question_fast_audio_rules = (
+        "CRITICAL BEHAVIOR: Answer only the exact question the user asked. "
+        "Do not create a case report unless the user explicitly asks for a case report. "
+        "Do not add key findings, differential diagnosis, missing information, limitations, or teaching sections unless explicitly requested. "
+        "For normal questions, use empty lists for key_findings, differential, and missing_information. "
+        "Keep limitations empty unless the user asks for clinical decision-making. "
+        "Keep case_summary empty or one very short context sentence. "
+        "If web search is available, search only for information directly needed to answer the user's exact question. "
+        "Do not search for broad background information or unrelated topics. "
+        "Use at most 3 strong sources and only include sources that directly support the answer. "
+        "The answer field must contain the complete direct answer. "
+        "The audience_script must be the same direct answer in a natural spoken form. "
+        "Do not say ''. "
+        "Do not say '' unless the user specifically asks for diagnosis or treatment advice. "
+        "Do not add disclaimers to ordinary summaries or meeting questions. "
+        "Keep the spoken answer under 45 words unless the user asks for detail. "
+    )
+
     developer_instructions = (
+        exact_question_fast_audio_rules +
         no_repeated_disclaimer_rules +
         exact_talking_rules +
         direct_answer_rules +

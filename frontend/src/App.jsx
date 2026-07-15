@@ -28,6 +28,7 @@ import AnalysisPanel from "./components/AnalysisPanel";
 import StatusBadge from "./components/StatusBadge";
 import TranscriptPanel from "./components/TranscriptPanel";
 import VoiceAssistant from "./components/VoiceAssistant";
+import RealtimeFoxLauncher from "./components/RealtimeFoxLauncher";
 
 import {
   ApiError,
@@ -1035,7 +1036,10 @@ export default function App() {
           }
         />
 
-        <AnalysisPanel
+        
+          <RealtimeFoxLauncher />
+
+          <AnalysisPanel
           result={analysisResult}
           stage={workflowStage}
           audioRef={audioRef}
