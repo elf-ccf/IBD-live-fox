@@ -459,3 +459,331 @@ async def realtime_test_page():
 </html>
         """
     )
+
+
+@router.get(
+    "/webex-agent",
+    response_class=HTMLResponse,
+)
+async def realtime_webex_agent():
+    """
+    Recall.ai Output Media page.
+
+    This page auto-connects to OpenAI Realtime when loaded by the Recall bot.
+    It is intended for the Live Webex mode.
+    """
+
+    return HTMLResponse(
+        """
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>IBD Live Fox Webex Agent</title>
+
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #09090b;
+        color: white;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+
+      .stage {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        place-items: center;
+        text-align: center;
+      }
+
+      .card {
+        width: min(760px, 88vw);
+        padding: 48px;
+        border-radius: 32px;
+        background: rgba(20, 20, 28, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.38);
+      }
+
+      .orb {
+        width: 96px;
+        height: 96px;
+        margin: 0 auto 24px;
+        border-radius: 30px;
+        background: linear-gradient(145deg, #a78bfa, #8b5cf6, #fb7185);
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 46px;
+        letter-spacing: -0.04em;
+      }
+
+      p {
+        margin: 14px 0 0;
+        color: #b8b8c5;
+        font-size: 19px;
+      }
+
+      .status {
+        margin-top: 24px;
+        color: #a78bfa;
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .hint {
+        margin-top: 16px;
+        color: #8f8fa3;
+        font-size: 14px;
+      }
+
+      audio {
+        width: 100%;
+        margin-top: 24px;
+      }
+
+      @keyframes pulse {
+        50% {
+          transform: scale(1.06);
+          box-shadow: 0 0 0 22px rgba(139, 92, 246, 0.08);
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="stage">
+      <section class="card">
+        <div class="orb"></div>
+
+        <h1>IBD Live Fox</h1>
+
+        <p>Realtime Webex voice assistant</p>
+
+        <div id="status" class="status">
+          Starting...
+        </div>
+
+        <div class="hint">
+          Say: Hey Fox, summarize what we are discussing.
+        </div>
+
+        <audio id="remoteAudio" autoplay></audio>
+      </section>
+    </main>
+
+    <script>
+      const statusEl = document.getElementById("status");
+      const remoteAudio = document.getElementById("remoteAudio");
+
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session_id") || "";
+
+      let pc = null;
+
+      function setStatus(message) {
+        statusEl.textContent = message;
+      }
+
+      async function connect() {
+        try {
+          setStatus("Requesting meeting audio...");
+
+          const mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+
+          pc = new RTCPeerConnection();
+
+          mediaStream.getTracks().forEach((track) => {
+            pc.addTrack(track, mediaStream);
+          });
+
+          pc.ontrack = (event) => {
+            remoteAudio.srcObject = event.streams[0];
+
+            remoteAudio.play().catch(() => {
+              setStatus("Connected. Audio playback pending.");
+            });
+
+            setStatus("Listening for Hey Fox");
+          };
+
+          pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === "connected") {
+              setStatus("Listening for Hey Fox");
+            }
+
+            if (
+              pc.iceConnectionState === "failed" ||
+              pc.iceConnectionState === "disconnected"
+            ) {
+              setStatus("Realtime connection interrupted");
+            }
+          };
+
+          const dataChannel = pc.createDataChannel("oai-events");
+
+          dataChannel.onopen = () => {
+            setStatus("Listening for Hey Fox");
+          };
+
+          dataChannel.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+
+              if (
+                data.type &&
+                (
+                  data.type.includes("response.audio") ||
+                  data.type.includes("output_audio")
+                )
+              ) {
+                setStatus("Speaking");
+              }
+
+              if (
+                data.type === "response.done" ||
+                data.type === "response.completed"
+              ) {
+                setStatus("Listening for Hey Fox");
+              }
+            } catch {
+              // Ignore noisy debug events.
+            }
+          };
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          setStatus("Connecting Realtime Fox...");
+
+          const route = sessionId
+            ? `/api/realtime/calls?session_id=${encodeURIComponent(sessionId)}`
+            : "/api/realtime/calls";
+
+          const response = await fetch(route, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/sdp",
+              "x-meeting-session-id": sessionId,
+            },
+            body: offer.sdp,
+          });
+
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail);
+          }
+
+          const answerSdp = await response.text();
+
+          await pc.setRemoteDescription({
+            type: "answer",
+            sdp: answerSdp,
+          });
+
+          setStatus("Listening for Hey Fox");
+        } catch (error) {
+          console.error(error);
+          setStatus("Realtime error: " + error.message);
+        }
+      }
+
+      connect();
+    </script>
+  </body>
+</html>
+        """
+    )
+
+
+@router.post("/webex")
+async def create_realtime_webex_agent(request: Request):
+    """
+    Create the normal Recall Webex bot, then immediately start Output Media
+    with the OpenAI Realtime agent page.
+    """
+
+    body = await request.json()
+
+    public_base_url = settings.public_base_url.strip().rstrip("/")
+
+    if not public_base_url.startswith("https://"):
+        raise HTTPException(
+            status_code=400,
+            detail="PUBLIC_BASE_URL must use public HTTPS for Recall Output Media.",
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://127.0.0.1:8000",
+        timeout=60,
+    ) as client:
+        recall_response = await client.post(
+            "/api/recall/webex",
+            json=body,
+        )
+
+    if recall_response.status_code >= 300:
+        raise HTTPException(
+            status_code=recall_response.status_code,
+            detail=recall_response.text,
+        )
+
+    result = recall_response.json()
+
+    session_id = result.get("session_id")
+    bot_id = result.get("recall_bot_id") or result.get("bot_id")
+
+    if not session_id or not bot_id:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Recall bot was created but session_id or recall_bot_id was missing.",
+                "result": result,
+            },
+        )
+
+    output_page_url = (
+        f"{public_base_url}/api/realtime/webex-agent"
+        f"?session_id={session_id}"
+    )
+
+    recall_base = settings.recall_region_base_url.strip().rstrip("/")
+
+    output_media_payload = {
+        "camera": {
+            "kind": "webpage",
+            "config": {
+                "url": output_page_url,
+            },
+        },
+    }
+
+    headers = {
+        "Authorization": f"Token {settings.recall_api_key.strip()}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        output_response = await client.post(
+            f"{recall_base}/api/v1/bot/{bot_id}/output_media/",
+            headers=headers,
+            json=output_media_payload,
+        )
+
+    result["realtime_output_media_url"] = output_page_url
+    result["realtime_output_media_status"] = output_response.status_code
+
+    if output_response.status_code >= 300:
+        result["realtime_output_media_error"] = output_response.text
+
+    return result
