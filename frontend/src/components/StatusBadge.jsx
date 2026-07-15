@@ -56,6 +56,48 @@ const STATUS_CONFIGURATION = {
     icon: Radio,
     tone: "neutral",
   },
+
+  ready: {
+    label: "Ready",
+    icon: CheckCircle2,
+    tone: "neutral",
+  },
+
+  creating_bot: {
+    label: "Creating bot",
+    icon: LoaderCircle,
+    tone: "processing",
+  },
+
+  waiting_for_admission: {
+    label: "Waiting for admission",
+    icon: LoaderCircle,
+    tone: "processing",
+  },
+
+  joining_webex: {
+    label: "Joining Webex",
+    icon: LoaderCircle,
+    tone: "processing",
+  },
+
+  listening_for_hey_fox: {
+    label: "Listening for Hey Fox",
+    icon: Mic,
+    tone: "success",
+  },
+
+  disconnected: {
+    label: "Disconnected",
+    icon: Radio,
+    tone: "neutral",
+  },
+
+  error: {
+    label: "Error",
+    icon: AlertCircle,
+    tone: "danger",
+  },
 };
 
 

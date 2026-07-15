@@ -15,6 +15,12 @@ class RecallBotCreateRequest(BaseModel):
 
     deidentified: bool = True
 
+    bot_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+    )
+
 
 class RecallBotCreateResponse(BaseModel):
     session_id: uuid.UUID

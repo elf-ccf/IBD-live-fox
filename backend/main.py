@@ -10,6 +10,7 @@ from app.api.recall_output import router as recall_output_router
 from app.api.sessions import router as sessions_router
 from app.api.speech import router as speech_router
 from app.api.realtime import router as realtime_router
+from app.api.webex_realtime import router as webex_realtime_router
 from app.core.config import settings
 from app.db.database import SessionLocal
 from app.db.init_db import initialize_database
@@ -46,6 +47,7 @@ app.include_router(speech_router)
 app.include_router(recall_router)
 app.include_router(recall_output_router)
 app.include_router(realtime_router)
+app.include_router(webex_realtime_router)
 
 
 @app.get("/")
@@ -91,5 +93,6 @@ def health_check() -> dict:
 async def start_webex_auto_agent():
     import asyncio
 
-    asyncio.create_task(webex_auto_agent_loop())
+    if settings.enable_webex_auto_agent:
+        asyncio.create_task(webex_auto_agent_loop())
 

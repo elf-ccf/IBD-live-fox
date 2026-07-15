@@ -126,6 +126,40 @@ const STAGE_LABELS = {
 };
 
 
+function mapRecallStatusToWebexStatus(data) {
+  const status = String(data?.session_status || "").toLowerCase();
+  const transcriptSegments = Number(data?.transcript_segment_count || 0);
+
+  if (status === "speaking") {
+    return "speaking";
+  }
+
+  if (status === "listening") {
+    return "listening_for_hey_fox";
+  }
+
+  if (status === "joining") {
+    return transcriptSegments > 0
+      ? "joining_webex"
+      : "waiting_for_admission";
+  }
+
+  if (status === "created") {
+    return "waiting_for_admission";
+  }
+
+  if (status === "completed") {
+    return "disconnected";
+  }
+
+  if (status === "failed") {
+    return "error";
+  }
+
+  return "joining_webex";
+}
+
+
 function formatError(error) {
   if (error instanceof ApiError) {
     return error.message;
@@ -161,11 +195,14 @@ export default function App() {
   const [sessionId, setSessionId] =
     useState("");
 
+  const [recallBotId, setRecallBotId] =
+    useState("");
+
   const [workflowStage, setWorkflowStage] =
     useState("idle");
 
   const [webexStatus, setWebexStatus] =
-    useState("offline");
+    useState("ready");
 
   const [sessionTitle, setSessionTitle] =
     useState("IBD Educational Session");
@@ -253,9 +290,11 @@ export default function App() {
         const data =
           await getRecallStatus(sessionId);
 
-        setWebexStatus(
-          data.session_status || "joining"
-        );
+        if (data?.recall_bot_id && !recallBotId) {
+          setRecallBotId(String(data.recall_bot_id));
+        }
+
+        setWebexStatus(mapRecallStatusToWebexStatus(data));
       } catch (caughtError) {
         console.warn(
           "Recall.ai status refresh failed:",
@@ -263,7 +302,7 @@ export default function App() {
         );
       }
     },
-    [mode, sessionId]
+    [mode, recallBotId, sessionId]
   );
 
 
@@ -562,11 +601,12 @@ export default function App() {
     }
 
     setWorkflowStage("joining");
-    setWebexStatus("joining");
+    setWebexStatus("creating_bot");
     setError("");
     setMessage("");
     setAnalysisResult(null);
     setTranscript(normalizeTranscript(null));
+    setRecallBotId("");
 
     try {
       const result =
@@ -578,17 +618,16 @@ export default function App() {
         });
 
       setSessionId(result.session_id);
-      setWebexStatus(
-        result.status || "joining"
-      );
+      setRecallBotId(result.recall_bot_id || "");
+      setWebexStatus("waiting_for_admission");
       setWorkflowStage("ready");
 
       setMessage(
-        `Recall.ai created the assistant. Admit “${result.bot_name}” into Webex. Live transcript events will appear here when delivered.`
+        `Recall.ai created Fox. Admit “${result.bot_name}” into Webex, then wait for Listening for Hey Fox.`
       );
     } catch (caughtError) {
       setWorkflowStage("failed");
-      setWebexStatus("failed");
+      setWebexStatus("error");
       setError(formatError(caughtError));
     }
   }
@@ -656,8 +695,13 @@ export default function App() {
 
     setMode(nextMode);
     setSessionId("");
+    setRecallBotId("");
     setWorkflowStage("idle");
-    setWebexStatus("offline");
+    setWebexStatus(
+      nextMode === "webex"
+        ? "ready"
+        : "offline"
+    );
     setSelectedFile(null);
     setTranscript(normalizeTranscript(null));
     setAnalysisResult(null);
@@ -681,10 +725,21 @@ export default function App() {
   );
 
   const visibleStatus =
-    mode === "webex" &&
-    webexStatus !== "offline"
+    mode === "webex"
       ? webexStatus
       : workflowStage;
+
+  const showAnalysisRealtimeFox =
+    mode === "transcript" || mode === "media";
+
+  const foxTranscriptionPending =
+    mode === "media" &&
+    new Set([
+      "creating_session",
+      "uploading",
+      "transcribing",
+      "loading_transcript",
+    ]).has(workflowStage);
 
 
   return (
@@ -866,16 +921,9 @@ export default function App() {
             >
               <Bot size={18} />
               {workflowStage === "joining"
-                ? "Connecting…"
-                : "Send AI to Webex"}
+                ? "Creating bot…"
+                : "Send Fox to Webex"}
             </button>
-
-          <div className="webex-realtime-slot">
-            <RealtimeFoxLauncher />
-          </div>
-
-          <div className="webex-realtime-slot">
-          </div>
           </div>
         )}
 
@@ -1064,6 +1112,14 @@ export default function App() {
         busy={isBusy}
         speaking={voicePlaying}
       />
+
+      {showAnalysisRealtimeFox && (
+        <RealtimeFoxLauncher
+          activeSessionId={sessionId}
+          mode={mode}
+          transcriptionPending={foxTranscriptionPending}
+        />
+      )}
 
       <section className="assistant-console">
         <header>

@@ -63,6 +63,7 @@ def build_recall_webhook_url(
 async def create_recall_bot(
     meeting_url: str,
     session_id: UUID,
+    bot_name: str | None = None,
 ) -> dict[str, Any]:
     if not settings.recall_api_key:
         raise RecallServiceError(
@@ -79,7 +80,7 @@ async def create_recall_bot(
 
     payload = {
         "meeting_url": meeting_url,
-        "bot_name": settings.bot_display_name,
+        "bot_name": (bot_name or settings.bot_display_name),
         "recording_config": {
             "transcript": {
                 "provider": {
