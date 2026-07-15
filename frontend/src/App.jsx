@@ -28,7 +28,6 @@ import AnalysisPanel from "./components/AnalysisPanel";
 import StatusBadge from "./components/StatusBadge";
 import TranscriptPanel from "./components/TranscriptPanel";
 import VoiceAssistant from "./components/VoiceAssistant";
-import RealtimeFoxLauncher from "./components/RealtimeFoxLauncher";
 
 import {
   ApiError,
@@ -45,6 +44,7 @@ import {
 } from "./lib/api";
 
 
+import RealtimeFoxLauncher from "./components/RealtimeFoxLauncher";
 const SAMPLE_TRANSCRIPT = `Dr. Patel: This is a simulated and fully de-identified educational case.
 
 Dr. Patel: A patient with Crohn disease presents with worsening right lower-quadrant abdominal pain.
@@ -804,7 +804,6 @@ export default function App() {
             <h2>
               {mode === "webex" &&
                 "Connect a Webex meeting"}
-
               {mode === "transcript" &&
                 "Add a presentation transcript"}
 
@@ -870,6 +869,13 @@ export default function App() {
                 ? "Connecting…"
                 : "Send AI to Webex"}
             </button>
+
+          <div className="webex-realtime-slot">
+            <RealtimeFoxLauncher />
+          </div>
+
+          <div className="webex-realtime-slot">
+          </div>
           </div>
         )}
 
@@ -1035,10 +1041,6 @@ export default function App() {
               "transcribing"
           }
         />
-
-        
-          <RealtimeFoxLauncher />
-
           <AnalysisPanel
           result={analysisResult}
           stage={workflowStage}

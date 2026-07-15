@@ -1,4 +1,18 @@
-import React, { useRef, useState } from "react";
+from pathlib import Path
+import re
+
+
+APP = Path("frontend/src/App.jsx")
+FOX = Path("frontend/src/components/RealtimeFoxLauncher.jsx")
+CSS = Path("frontend/src/modern.css")
+
+
+# ------------------------------------------------------------
+# 1. Rewrite RealtimeFoxLauncher.jsx cleanly
+# ------------------------------------------------------------
+
+FOX.write_text(
+r'''import React, { useRef, useState } from "react";
 import { Mic, MicOff, Radio, Volume2 } from "lucide-react";
 
 
@@ -349,3 +363,262 @@ export default function RealtimeFoxLauncher() {
     </section>
   );
 }
+''',
+encoding="utf-8",
+)
+
+
+# ------------------------------------------------------------
+# 2. Repair App.jsx import and placement
+# ------------------------------------------------------------
+
+text = APP.read_text(encoding="utf-8")
+
+# Remove corrupted/duplicate import lines wherever they landed.
+text = re.sub(
+    r'^\s*import\s+RealtimeFoxLauncher\s+from\s+["\']\.\/components\/RealtimeFoxLauncher["\'];\s*\n',
+    "",
+    text,
+    flags=re.MULTILINE,
+)
+
+# Remove all existing Realtime component usages and wrappers.
+text = re.sub(
+    r'\n\s*<RealtimeFoxLauncher\s*/>\s*\n',
+    "\n",
+    text,
+)
+
+text = re.sub(
+    r'\n\s*<div\s+className=["\']webex-realtime-slot["\']>\s*<RealtimeFoxLauncher\s*/>\s*</div>\s*\n',
+    "\n",
+    text,
+    flags=re.DOTALL,
+)
+
+# Insert import after the initial import section, respecting multi-line imports.
+lines = text.splitlines(True)
+insert_at = 0
+inside_import = False
+
+for index, line in enumerate(lines):
+    stripped = line.strip()
+
+    if index == 0 and stripped.startswith("import "):
+        inside_import = not stripped.endswith(";")
+        insert_at = index + 1
+        continue
+
+    if inside_import:
+        insert_at = index + 1
+        if stripped.endswith(";"):
+            inside_import = False
+        continue
+
+    if stripped.startswith("import "):
+        inside_import = not stripped.endswith(";")
+        insert_at = index + 1
+        continue
+
+    if stripped == "":
+        insert_at = index + 1
+        continue
+
+    break
+
+lines.insert(
+    insert_at,
+    'import RealtimeFoxLauncher from "./components/RealtimeFoxLauncher";\n',
+)
+
+text = "".join(lines)
+
+component = '''
+          <div className="webex-realtime-slot">
+            <RealtimeFoxLauncher />
+          </div>
+'''
+
+# Insert exactly once after the Send AI to Webex button.
+marker = "Send AI to Webex"
+
+if marker in text:
+    marker_index = text.find(marker)
+    button_end = text.find("</button>", marker_index)
+
+    if button_end != -1:
+        line_end = text.find("\n", button_end)
+
+        if line_end == -1:
+            line_end = button_end + len("</button>")
+
+        text = text[:line_end + 1] + component + text[line_end + 1:]
+    else:
+        raise RuntimeError("Found Send AI to Webex but could not find closing button.")
+else:
+    marker = "LIVE CONTEXT"
+
+    if marker not in text:
+        raise RuntimeError("Could not find Webex insertion marker.")
+
+    marker_index = text.find(marker)
+    line_start = text.rfind("\n", 0, marker_index)
+    text = text[:line_start] + component + text[line_start:]
+
+APP.write_text(text, encoding="utf-8")
+
+
+# ------------------------------------------------------------
+# 3. Clean obvious corrupted CSS paste fragments and append clean CSS
+# ------------------------------------------------------------
+
+css = CSS.read_text(encoding="utf-8")
+
+bad_fragments = [
+    "CSS;",
+    "CSSargin",
+    "tiary);;",
+    "197, 94, 0.12);2);185);ba",
+]
+
+for frag in bad_fragments:
+    css = css.replace(frag, "")
+
+# Remove previous Webex-only block if it exists, so we avoid duplicates.
+css = re.sub(
+    r'/\* Webex-only Realtime Fox \*/[\s\S]*?(?=/\*|$)',
+    "",
+    css,
+)
+
+css += r'''
+
+/* Webex-only Realtime Fox */
+
+.webex-realtime-slot {
+  margin: 16px 0;
+}
+
+.webex-realtime-fox {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(139, 92, 246, 0.24);
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(251, 113, 133, 0.08)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.webex-realtime-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #fb7185);
+  box-shadow: 0 12px 30px rgba(139, 92, 246, 0.22);
+}
+
+.webex-realtime-main {
+  min-width: 0;
+}
+
+.webex-realtime-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.webex-realtime-kicker {
+  margin: 0 0 3px;
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.webex-realtime-header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.fox-live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.06);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.fox-live-dot::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.fox-live-dot.is-live {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.fox-live-dot.is-live::before {
+  background: #22c55e;
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.12);
+}
+
+.webex-realtime-copy {
+  margin: 8px 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.webex-realtime-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.compact-button {
+  min-height: 38px;
+  padding: 10px 14px;
+}
+
+.webex-realtime-status {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.webex-realtime-context {
+  margin: 9px 0 0;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+}
+
+.webex-realtime-audio {
+  width: 100%;
+  margin-top: 12px;
+}
+'''
+
+CSS.write_text(css, encoding="utf-8")
+
+print("Repaired Webex-only Realtime Fox UI.")
