@@ -103,7 +103,7 @@ export function createRecallWebexSession({
   meetingUrl,
   title,
 }) {
-  return request("/api/realtime/webex", {
+  return request("/api/webex-realtime/start", {
     method: "POST",
 
     body: JSON.stringify({

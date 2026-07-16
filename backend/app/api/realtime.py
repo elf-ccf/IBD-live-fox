@@ -1,5 +1,4 @@
 import json
-import os
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -15,17 +14,11 @@ router = APIRouter(
 
 
 def get_realtime_model():
-    return os.getenv(
-        "OPENAI_REALTIME_MODEL",
-        "gpt-realtime-2.1-mini",
-    )
+  return settings.openai_realtime_model
 
 
 def get_realtime_voice():
-    return os.getenv(
-        "OPENAI_REALTIME_VOICE",
-        "cedar",
-    )
+  return settings.openai_realtime_voice
 
 
 def trim_context(value, max_chars=6000):
@@ -66,11 +59,11 @@ async def fetch_session_context(session_id):
         return ""
 
 
-def base_instructions():
+def analysis_mode_instructions():
     return (
         "You are IBD Live Fox, a fast voice-first assistant for simulated or "
         "fully de-identified IBD educational discussions. "
-        "Only answer when the user asks a question or says Hey Fox. "
+    "Answer direct user questions immediately. "
         "Answer only the exact question asked. "
         "Keep spoken answers under 45 words unless the user asks for detail. "
         "Do not create a full case report unless explicitly requested. "
@@ -83,8 +76,24 @@ def base_instructions():
     )
 
 
-def build_instructions(context):
-    instructions = base_instructions()
+def webex_mode_instructions():
+    return (
+        "You are IBD Live Fox in Webex wake mode. "
+        "Stay silent unless a participant clearly addresses you with Hey Fox. "
+        "Also tolerate Hi Fox, Okay Fox, OK Fox, Hey folks, and Hey box. "
+        "Do not answer ordinary meeting discussion. "
+        "When addressed, answer only the command after the wake phrase. "
+        "Keep spoken answers under 45 words unless more detail is requested. "
+        "After each response, return to silent listening."
+    )
+
+
+def build_instructions(context, mode):
+    instructions = (
+        webex_mode_instructions()
+        if mode == "webex"
+        else analysis_mode_instructions()
+    )
 
     if context:
         instructions += (
@@ -123,6 +132,17 @@ async def create_realtime_call(request: Request):
             detail="Missing SDP offer body.",
         )
 
+    requested_mode = (
+      request.query_params.get("mode")
+      or "analysis"
+    ).strip().lower()
+
+    mode = (
+      requested_mode
+      if requested_mode in {"analysis", "webex"}
+      else "analysis"
+    )
+
     session_id = (
         request.headers.get("x-meeting-session-id")
         or request.query_params.get("session_id")
@@ -134,7 +154,10 @@ async def create_realtime_call(request: Request):
     session_config = {
         "type": "realtime",
         "model": get_realtime_model(),
-        "instructions": build_instructions(context),
+        "instructions": build_instructions(
+          context,
+          mode,
+        ),
         "audio": {
             "output": {
                 "voice": get_realtime_voice(),

@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react";
-import { Mic, MicOff, Radio, Volume2 } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Radio } from "lucide-react";
 
 
 function getBackendUrl() {
@@ -13,257 +13,84 @@ function getBackendUrl() {
 }
 
 
-function getSessionId(session) {
-  return (
-    session?.id ||
-    session?.session_id ||
-    session?.meeting_session_id ||
-    ""
-  );
-}
+export default function RealtimeFoxLauncher({
+  activeSessionId = "",
+  mode = "transcript",
+  transcriptionPending = false,
+}) {
+  const backendUrl = getBackendUrl();
 
-
-function getSessionDate(session) {
-  return (
-    session?.updated_at ||
-    session?.created_at ||
-    session?.started_at ||
-    ""
-  );
-}
-
-
-async function getTranscriptInfo(backendUrl, sessionId) {
-  try {
-    const response = await fetch(
-      `${backendUrl}/api/sessions/${sessionId}/transcript`
-    );
-
-    if (!response.ok) {
-      return {
-        sessionId,
-        segmentCount: 0,
-        transcriptLength: 0,
-      };
-    }
-
-    const data = await response.json();
-
-    return {
-      sessionId,
-      segmentCount: data.segment_count || data.segments?.length || 0,
-      transcriptLength: data.transcript?.length || 0,
-    };
-  } catch {
-    return {
-      sessionId,
-      segmentCount: 0,
-      transcriptLength: 0,
-    };
-  }
-}
-
-
-async function findBestSessionWithTranscript(backendUrl) {
-  try {
-    const response = await fetch(`${backendUrl}/api/sessions`);
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const payload = await response.json();
-
-    const sessions = Array.isArray(payload)
-      ? payload
-      : payload.sessions || payload.items || payload.data || [];
-
-    if (!Array.isArray(sessions) || sessions.length === 0) {
-      return null;
-    }
-
-    const sorted = [...sessions].sort((a, b) => {
-      const aDate = new Date(getSessionDate(a)).getTime() || 0;
-      const bDate = new Date(getSessionDate(b)).getTime() || 0;
-
-      return bDate - aDate;
-    });
-
-    const recent = sorted.slice(0, 8);
-    const checked = [];
-
-    for (const session of recent) {
-      const sessionId = getSessionId(session);
-
-      if (!sessionId) {
-        continue;
-      }
-
-      const info = await getTranscriptInfo(backendUrl, sessionId);
-
-      checked.push({
-        ...info,
-        title: session.title || session.name || "Untitled session",
-      });
-    }
-
-    const withTranscript = checked
-      .filter((item) => item.segmentCount > 0 || item.transcriptLength > 0)
-      .sort((a, b) => {
-        if (b.segmentCount !== a.segmentCount) {
-          return b.segmentCount - a.segmentCount;
-        }
-
-        return b.transcriptLength - a.transcriptLength;
-      });
-
-    return withTranscript[0] || checked[0] || null;
-  } catch {
-    return null;
-  }
-}
-
-
-export default function RealtimeFoxLauncher() {
   const peerRef = useRef(null);
   const streamRef = useRef(null);
+  const channelRef = useRef(null);
   const audioRef = useRef(null);
+  const connectAbortRef = useRef(null);
+  const connectCanceledRef = useRef(false);
 
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [status, setStatus] = useState("Ready for Webex voice");
-  const [sessionInfo, setSessionInfo] = useState(null);
+  const [voiceState, setVoiceState] = useState("disconnected");
+  const [connectedSessionId, setConnectedSessionId] = useState("");
 
+  const connecting = voiceState === "connecting";
+  const connected = voiceState === "listening" || voiceState === "speaking";
+  const isSpeaking = voiceState === "speaking";
+  const isError = voiceState === "error";
 
-  async function connectRealtime() {
-    if (peerRef.current || connecting) {
-      return;
+  const hasSession = Boolean(activeSessionId);
+  const reconnectRequired = Boolean(
+    connected && connectedSessionId && activeSessionId && connectedSessionId !== activeSessionId
+  );
+
+  const disabledReason = transcriptionPending
+    ? "Transcribing recording..."
+    : "Add a transcript or recording first";
+
+  function buttonLabel() {
+    if (voiceState === "connecting") {
+      return "Connecting...";
     }
 
-    const backendUrl = getBackendUrl();
-
-    setConnecting(true);
-    setStatus("Finding Webex context...");
-
-    try {
-      const bestSession = await findBestSessionWithTranscript(backendUrl);
-
-      setSessionInfo(bestSession);
-
-      setStatus("Requesting microphone...");
-
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-
-      streamRef.current = mediaStream;
-
-      const peer = new RTCPeerConnection();
-
-      peerRef.current = peer;
-
-      mediaStream.getTracks().forEach((track) => {
-        peer.addTrack(track, mediaStream);
-      });
-
-      peer.ontrack = (event) => {
-        if (audioRef.current) {
-          audioRef.current.srcObject = event.streams[0];
-
-          audioRef.current.play().catch(() => {
-            setStatus("Connected. Select Play if browser blocks audio.");
-          });
-        }
-
-        setStatus("Listening for Hey Fox");
-      };
-
-      const dataChannel = peer.createDataChannel("oai-events");
-
-      dataChannel.onopen = () => {
-        setStatus("Listening for Hey Fox");
-      };
-
-      dataChannel.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (
-            data?.type?.includes("response.audio") ||
-            data?.type?.includes("output_audio")
-          ) {
-            setStatus("Speaking");
-          }
-
-          if (
-            data?.type === "response.done" ||
-            data?.type === "response.completed"
-          ) {
-            setStatus("Listening for Hey Fox");
-          }
-        } catch {
-          // Ignore noisy realtime events.
-        }
-      };
-
-      const offer = await peer.createOffer();
-
-      await peer.setLocalDescription(offer);
-
-      const sessionId = bestSession?.sessionId || "";
-
-      const route = sessionId
-        ? `/api/realtime/calls?session_id=${encodeURIComponent(sessionId)}`
-        : "/api/realtime/calls";
-
-      setStatus("Connecting to Realtime voice...");
-
-      const response = await fetch(`${backendUrl}${route}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/sdp",
-          "x-meeting-session-id": sessionId,
-        },
-        body: offer.sdp,
-      });
-
-      if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail);
-      }
-
-      const answerSdp = await response.text();
-
-      await peer.setRemoteDescription({
-        type: "answer",
-        sdp: answerSdp,
-      });
-
-      setConnected(true);
-      setStatus("Listening for Hey Fox");
-    } catch (error) {
-      console.error(error);
-      setStatus(`Error: ${error.message}`);
-      disconnectRealtime();
-    } finally {
-      setConnecting(false);
+    if (voiceState === "speaking") {
+      return "Speaking";
     }
+
+    if (voiceState === "listening") {
+      return "Listening";
+    }
+
+    if (voiceState === "error") {
+      return "Retry Fox";
+    }
+
+    return "Ask Fox";
   }
 
+  async function cleanupConnection(resetSession = false) {
+    connectCanceledRef.current = true;
 
-  function disconnectRealtime() {
+    if (connectAbortRef.current) {
+      connectAbortRef.current.abort();
+      connectAbortRef.current = null;
+    }
+
+    try {
+      channelRef.current?.close();
+    } catch {
+      // Ignore close noise.
+    }
+
     try {
       peerRef.current?.close();
     } catch {
-      // Ignore.
+      // Ignore close noise.
     }
 
     try {
       streamRef.current?.getTracks()?.forEach((track) => track.stop());
     } catch {
-      // Ignore.
+      // Ignore stop noise.
     }
 
+    channelRef.current = null;
     peerRef.current = null;
     streamRef.current = null;
 
@@ -271,81 +98,194 @@ export default function RealtimeFoxLauncher() {
       audioRef.current.srcObject = null;
     }
 
-    setConnected(false);
-    setConnecting(false);
-    setStatus("Ready for Webex voice");
+    if (resetSession) {
+      setConnectedSessionId("");
+    }
   }
 
+  async function disconnectRealtime() {
+    await cleanupConnection(false);
+    setVoiceState("disconnected");
+  }
+
+  async function connectRealtime() {
+    if (reconnectRequired) {
+      setVoiceState("error");
+      await disconnectRealtime();
+      return;
+    }
+
+    if (peerRef.current || connecting) {
+      return;
+    }
+
+    connectCanceledRef.current = false;
+    setVoiceState("connecting");
+
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+
+      if (connectCanceledRef.current) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      streamRef.current = mediaStream;
+
+      const peer = new RTCPeerConnection();
+      peerRef.current = peer;
+
+      mediaStream.getTracks().forEach((track) => {
+        peer.addTrack(track, mediaStream);
+      });
+
+      peer.ontrack = (event) => {
+        if (!audioRef.current) {
+          return;
+        }
+
+        audioRef.current.srcObject = event.streams[0];
+        audioRef.current.play().catch(() => {
+          // Autoplay may still be restricted in some browsers.
+        });
+      };
+
+      const dataChannel = peer.createDataChannel("oai-events");
+      channelRef.current = dataChannel;
+
+      dataChannel.onopen = () => {
+        setVoiceState("listening");
+      };
+
+      dataChannel.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          const eventType = String(payload?.type || "");
+
+          if (eventType.includes("response.audio") || eventType.includes("output_audio")) {
+            setVoiceState("speaking");
+          }
+
+          if (eventType === "response.done" || eventType === "response.completed") {
+            setVoiceState("listening");
+          }
+        } catch {
+          // Ignore noisy realtime events.
+        }
+      };
+
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+
+      const abortController = new AbortController();
+      connectAbortRef.current = abortController;
+
+      const route = `/api/realtime/calls?session_id=${encodeURIComponent(activeSessionId)}&mode=analysis`;
+
+      const response = await fetch(`${backendUrl}${route}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/sdp",
+          "x-meeting-session-id": activeSessionId,
+        },
+        body: offer.sdp,
+        signal: abortController.signal,
+      });
+
+      connectAbortRef.current = null;
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const answerSdp = await response.text();
+      await peer.setRemoteDescription({
+        type: "answer",
+        sdp: answerSdp,
+      });
+
+      setConnectedSessionId(activeSessionId);
+      setVoiceState("listening");
+    } catch (error) {
+      await cleanupConnection(false);
+
+      if (error?.name === "AbortError") {
+        setVoiceState("disconnected");
+      } else {
+        setVoiceState("error");
+      }
+    } finally {
+      connectAbortRef.current = null;
+      connectCanceledRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!hasSession) {
+      setConnectedSessionId("");
+    }
+  }, [hasSession]);
+
+  useEffect(() => {
+    if (!hasSession || transcriptionPending || mode === "webex") {
+      void cleanupConnection(true);
+      setVoiceState("disconnected");
+    } else if (connectedSessionId && activeSessionId && connectedSessionId !== activeSessionId) {
+      setVoiceState("error");
+    }
+  }, [hasSession, transcriptionPending, mode, connectedSessionId, activeSessionId]);
+
+  useEffect(() => {
+    return () => {
+      void cleanupConnection(true);
+    };
+  }, []);
+
+  const canInteract = hasSession && !transcriptionPending;
 
   return (
-    <section className="webex-realtime-fox">
-      <div className="webex-realtime-icon">
-        <Radio size={18} />
-      </div>
+    <>
+      <button
+        type="button"
+        className={[
+          "realtime-fox-fab",
+          connecting ? "connecting" : "",
+          connected ? "connected" : "",
+          isSpeaking ? "speaking" : "",
+          isError ? "error" : "",
+        ].join(" ").trim()}
+        aria-label="Ask Fox"
+        title={canInteract ? "Ask Fox" : disabledReason}
+        disabled={!canInteract}
+        onClick={() => {
+          if (connecting) {
+            void cleanupConnection(false);
+            setVoiceState("disconnected");
+            return;
+          }
 
-      <div className="webex-realtime-main">
-        <div className="webex-realtime-header">
-          <div>
-            <p className="webex-realtime-kicker">
-              LIVE WEBEX VOICE
-            </p>
+          if (connected) {
+            void disconnectRealtime();
+            return;
+          }
 
-            <h3>
-              Realtime Fox
-            </h3>
-          </div>
+          void connectRealtime();
+        }}
+      >
+        <span className="realtime-fox-fab-dot" data-connected={connected ? "true" : "false"} />
+        {connecting && <span className="realtime-fox-spinner" aria-hidden="true" />}
+        {!connecting && <Radio size={16} />}
+        <span>{buttonLabel()}</span>
+      </button>
 
-          <span className={connected ? "fox-live-dot is-live" : "fox-live-dot"}>
-            {connected ? "Live" : "Idle"}
-          </span>
-        </div>
-
-        <p className="webex-realtime-copy">
-          Use this only for live Webex voice. Transcript and recording analysis
-          still use the AI Output panel.
-        </p>
-
-        <div className="webex-realtime-controls">
-          {!connected ? (
-            <button
-              type="button"
-              className="primary-button compact-button"
-              onClick={connectRealtime}
-              disabled={connecting}
-            >
-              <Mic size={16} />
-              {connecting ? "Connecting..." : "Connect voice"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={disconnectRealtime}
-            >
-              <MicOff size={16} />
-              Disconnect
-            </button>
-          )}
-
-          <div className="webex-realtime-status">
-            <Volume2 size={15} />
-            <span>{status}</span>
-          </div>
-        </div>
-
-        {sessionInfo?.sessionId && (
-          <p className="webex-realtime-context">
-            Context: {sessionInfo.segmentCount} segments loaded
-          </p>
-        )}
-
-        <audio
-          ref={audioRef}
-          autoPlay
-          controls
-          className="webex-realtime-audio"
-        />
-      </div>
-    </section>
+      <audio
+        ref={audioRef}
+        autoPlay
+        playsInline
+        className="realtime-fox-audio-hidden"
+      />
+    </>
   );
 }

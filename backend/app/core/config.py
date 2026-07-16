@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_text_model: str = "gpt-4o-mini"
+    openai_realtime_model: str = "gpt-realtime-2.1-mini"
+    openai_realtime_voice: str = "cedar"
     openai_transcription_model: str = "gpt-4o-transcribe"
     openai_tts_model: str = "gpt-4o-mini-tts"
     openai_tts_voice: str = "cedar"
@@ -28,6 +30,7 @@ class Settings(BaseSettings):
     wake_phrase: str = "hey ai"
     bot_display_name: str = "IBD Live AI"
     deidentified_only: bool = True
+    enable_webex_auto_agent: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

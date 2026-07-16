@@ -134,6 +134,7 @@ async def create_webex_bot(
         recall_response = await create_recall_bot(
             meeting_url=str(request.meeting_url),
             session_id=meeting_session.id,
+            bot_name=request.bot_name,
         )
 
         recall_bot_id = get_recall_bot_id(
@@ -160,7 +161,7 @@ async def create_webex_bot(
             recall_bot_id=recall_bot_id,
             status=meeting_session.status.value,
             meeting_url=str(request.meeting_url),
-            bot_name=settings.bot_display_name,
+            bot_name=request.bot_name or settings.bot_display_name,
             webhook_url=webhook_url,
         )
 
