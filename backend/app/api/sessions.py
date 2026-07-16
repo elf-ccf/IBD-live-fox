@@ -1,4 +1,6 @@
 import uuid
+import time
+import logging
 from pathlib import Path
 import tempfile
 
@@ -35,6 +37,8 @@ from app.schemas.session import (
     TranscriptSegmentResponse,
 )
 from app.services.transcript_parser import parse_transcript
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -93,10 +97,25 @@ def replace_transcript_segments(
     default_speaker: str,
     database: Session,
 ) -> list[TranscriptSegment]:
+    timing_start = time.perf_counter()
+    
+    # Validate input
+    validation_start = time.perf_counter()
+    if not raw_text or not raw_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No transcript text provided.",
+        )
+    input_character_count = len(raw_text)
+    validation_ms = (time.perf_counter() - validation_start) * 1000
+    
+    # Parse transcript
+    parse_start = time.perf_counter()
     parsed_segments = parse_transcript(
         raw_text=raw_text,
         default_speaker=default_speaker,
     )
+    parse_ms = (time.perf_counter() - parse_start) * 1000
 
     if not parsed_segments:
         raise HTTPException(
@@ -106,15 +125,19 @@ def replace_transcript_segments(
             ),
         )
 
+    # Delete old segments
+    delete_start = time.perf_counter()
     database.execute(
         delete(TranscriptSegment).where(
             TranscriptSegment.meeting_session_id
             == meeting_session.id
         )
     )
+    delete_ms = (time.perf_counter() - delete_start) * 1000
 
+    # Prepare segments in memory
+    segment_prep_start = time.perf_counter()
     stored_segments: list[TranscriptSegment] = []
-
     wake_phrase = settings.wake_phrase.lower().strip()
     bot_name = settings.bot_display_name.lower().strip()
 
@@ -140,15 +163,40 @@ def replace_transcript_segments(
             ),
         )
 
-        database.add(segment)
         stored_segments.append(segment)
+    
+    segment_prep_ms = (time.perf_counter() - segment_prep_start) * 1000
 
+    # Bulk insert all segments in one operation
+    save_start = time.perf_counter()
+    database.add_all(stored_segments)
     meeting_session.status = SessionStatus.COMPLETED
-
     database.commit()
+    save_ms = (time.perf_counter() - save_start) * 1000
 
+    # Refresh segment IDs from database
+    refresh_start = time.perf_counter()
     for segment in stored_segments:
         database.refresh(segment)
+    refresh_ms = (time.perf_counter() - refresh_start) * 1000
+    
+    total_ms = (time.perf_counter() - timing_start) * 1000
+    segment_count = len(stored_segments)
+    
+    # Log timing information
+    logger.info(
+        f"Transcript ingestion completed "
+        f"session_id={meeting_session.id} "
+        f"characters={input_character_count} "
+        f"segments={segment_count} "
+        f"validation_ms={validation_ms:.1f} "
+        f"parse_ms={parse_ms:.1f} "
+        f"delete_ms={delete_ms:.1f} "
+        f"segment_prep_ms={segment_prep_ms:.1f} "
+        f"save_ms={save_ms:.1f} "
+        f"refresh_ms={refresh_ms:.1f} "
+        f"total_ms={total_ms:.1f}"
+    )
 
     return stored_segments
 

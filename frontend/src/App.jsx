@@ -446,16 +446,7 @@ export default function App() {
       setWorkflowStage("ready");
 
       setMessage(
-        `${storedTranscript.segment_count} transcript segments stored. Preparing the initial summary…`
-      );
-
-      await runAnalysis(
-        session.id,
-        "Summarize the presentation for the panel. Clearly identify the key findings and important missing information.",
-        {
-          autoPlay: false,
-          showCompletionMessage: true,
-        }
+        "Transcript ready. Ask Fox or enter a question to analyze it."
       );
     } catch (caughtError) {
       if (workflowStage !== "failed") {
@@ -506,16 +497,7 @@ export default function App() {
       setWorkflowStage("ready");
 
       setMessage(
-        `${storedTranscript.segment_count} transcript segments uploaded. Preparing the initial summary…`
-      );
-
-      await runAnalysis(
-        session.id,
-        "Summarize the presentation for the panel. Clearly identify the key findings and important missing information.",
-        {
-          autoPlay: false,
-          showCompletionMessage: true,
-        }
+        "Transcript ready. Ask Fox or enter a question to analyze it."
       );
     } catch (caughtError) {
       if (workflowStage !== "failed") {
@@ -574,16 +556,7 @@ export default function App() {
       setWorkflowStage("ready");
 
       setMessage(
-        `${storedTranscript.segment_count} transcript segments created. Preparing the initial summary…`
-      );
-
-      await runAnalysis(
-        session.id,
-        "Summarize the presentation for the panel. Clearly identify the key findings and important missing information.",
-        {
-          autoPlay: false,
-          showCompletionMessage: true,
-        }
+        "Transcript ready. Ask Fox or enter a question to analyze it."
       );
     } catch (caughtError) {
       setWorkflowStage("failed");
