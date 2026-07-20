@@ -84,7 +84,13 @@ async def create_recall_bot(
         "recording_config": {
             "transcript": {
                 "provider": {
-                    "recallai_streaming": {}
+                    "recallai_streaming": {
+                        "mode": "prioritize_low_latency",
+                        "language_code": "en",
+                    }
+                },
+                "diarization": {
+                    "use_separate_streams_when_available": True,
                 },
             },
             "realtime_endpoints": [
@@ -224,19 +230,19 @@ def extract_transcript_data(
         data.get("speaker")
         or data.get("speaker_name")
         or participant.get("name")
-        or "Unknown speaker"
+        or "Speaker"
     )
 
     if isinstance(speaker_value, dict):
         speaker_value = (
             speaker_value.get("name")
             or speaker_value.get("display_name")
-            or "Unknown speaker"
+            or "Speaker"
         )
 
     speaker_name = (
         str(speaker_value).strip()
-        or "Unknown speaker"
+        or "Speaker"
     )
 
     raw_words = data.get("words")

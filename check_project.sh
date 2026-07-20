@@ -2,7 +2,7 @@
 
 set -e
 
-PROJECT="/workspaces/ibd-live"
+PROJECT="$(cd "$(dirname "$0")" && pwd)"
 
 echo
 echo "=== Checking backend ==="
