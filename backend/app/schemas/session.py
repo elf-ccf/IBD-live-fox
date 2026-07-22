@@ -68,3 +68,17 @@ class FullTranscriptResponse(BaseModel):
     segment_count: int
     transcript: str
     segments: list[TranscriptSegmentResponse]
+
+
+class AITranscriptResponseCreate(BaseModel):
+    response_id: str = Field(
+        min_length=1,
+        max_length=300,
+        description="Unique OpenAI Realtime response identifier.",
+    )
+
+    text: str = Field(
+        min_length=1,
+        max_length=20000,
+        description="Completed Fox response transcript.",
+    )

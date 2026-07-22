@@ -122,9 +122,22 @@ export function getRecallStatus(sessionId) {
 }
 
 
-export function getTranscript(sessionId) {
+export function getTranscript(
+  sessionId,
+  afterSequence = 0
+) {
+  const numericSequence =
+    Number(afterSequence) || 0;
+
+  const query =
+    numericSequence > 0
+      ? `?after_sequence=${encodeURIComponent(
+          numericSequence
+        )}`
+      : "";
+
   return request(
-    `/api/sessions/${sessionId}/transcript`
+    `/api/sessions/${sessionId}/transcript${query}`
   );
 }
 
@@ -231,4 +244,22 @@ export function createSpeech(text) {
       text,
     }),
   });
+}
+
+
+export function storeFoxResponse({
+  sessionId,
+  responseId,
+  text,
+}) {
+  return request(
+    `/api/sessions/${sessionId}/transcript/ai-response`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        response_id: responseId,
+        text,
+      }),
+    }
+  );
 }

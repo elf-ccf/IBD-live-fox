@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";
+import { storeFoxResponse } from "../lib/api";
 
 
 function getBackendUrl() {
@@ -26,6 +27,9 @@ export default function RealtimeFoxLauncher({
   const audioRef = useRef(null);
   const connectAbortRef = useRef(null);
   const connectCanceledRef = useRef(false);
+  const storedResponseIdsRef = useRef(
+    new Set()
+  );
 
   const [voiceState, setVoiceState] = useState("disconnected");
   const [connectedSessionId, setConnectedSessionId] = useState("");
@@ -42,7 +46,9 @@ export default function RealtimeFoxLauncher({
 
   const disabledReason = transcriptionPending
     ? "Transcribing recording..."
-    : "Add a transcript or recording first";
+    : mode === "webex"
+      ? "Wait for live meeting speech first"
+      : "Add a transcript or recording first";
 
   function buttonLabel() {
     if (voiceState === "connecting") {
@@ -162,13 +168,67 @@ export default function RealtimeFoxLauncher({
       dataChannel.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          const eventType = String(payload?.type || "");
+          const eventType = String(
+            payload?.type || ""
+          );
 
-          if (eventType.includes("response.audio") || eventType.includes("output_audio")) {
+          if (
+            eventType.includes("response.audio") ||
+            eventType.includes("output_audio")
+          ) {
             setVoiceState("speaking");
           }
 
-          if (eventType === "response.done" || eventType === "response.completed") {
+          if (
+            eventType ===
+              "response.output_audio_transcript.done" ||
+            eventType ===
+              "response.audio_transcript.done"
+          ) {
+            const responseText = String(
+              payload?.transcript || ""
+            ).trim();
+
+            const responseId = String(
+              payload?.response_id ||
+              payload?.item_id ||
+              payload?.event_id ||
+              ""
+            ).trim();
+
+            if (
+              responseText &&
+              responseId &&
+              activeSessionId &&
+              !storedResponseIdsRef.current.has(
+                responseId
+              )
+            ) {
+              storedResponseIdsRef.current.add(
+                responseId
+              );
+
+              void storeFoxResponse({
+                sessionId: activeSessionId,
+                responseId,
+                text: responseText,
+              }).catch((storageError) => {
+                storedResponseIdsRef.current.delete(
+                  responseId
+                );
+
+                console.warn(
+                  "Unable to store Fox response:",
+                  storageError
+                );
+              });
+            }
+          }
+
+          if (
+            eventType === "response.done" ||
+            eventType === "response.completed"
+          ) {
             setVoiceState("listening");
           }
         } catch {
@@ -229,7 +289,7 @@ export default function RealtimeFoxLauncher({
   }, [hasSession]);
 
   useEffect(() => {
-    if (!hasSession || transcriptionPending || mode === "webex") {
+    if (!hasSession || transcriptionPending) {
       void cleanupConnection(true);
       setVoiceState("disconnected");
     } else if (connectedSessionId && activeSessionId && connectedSessionId !== activeSessionId) {

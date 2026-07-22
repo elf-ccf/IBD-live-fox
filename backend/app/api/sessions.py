@@ -15,6 +15,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
@@ -30,6 +31,7 @@ from app.models import (
     TranscriptSegment,
 )
 from app.schemas.session import (
+    AITranscriptResponseCreate,
     FullTranscriptResponse,
     SessionCreate,
     SessionResponse,
@@ -364,6 +366,14 @@ async def upload_transcript(
 )
 def get_full_transcript(
     session_id: uuid.UUID,
+    after_sequence: int = Query(
+        default=0,
+        ge=0,
+        description=(
+            "Return only transcript segments with a sequence "
+            "number greater than this value."
+        ),
+    ),
     database: Session = Depends(get_database),
 ) -> FullTranscriptResponse:
     meeting_session = get_session_or_404(
@@ -371,13 +381,19 @@ def get_full_transcript(
         database=database,
     )
 
-    statement = (
-        select(TranscriptSegment)
-        .where(
-            TranscriptSegment.meeting_session_id
-            == meeting_session.id
+    statement = select(TranscriptSegment).where(
+        TranscriptSegment.meeting_session_id
+        == meeting_session.id
+    )
+
+    if after_sequence > 0:
+        statement = statement.where(
+            TranscriptSegment.sequence_number
+            > after_sequence
         )
-        .order_by(TranscriptSegment.sequence_number.asc())
+
+    statement = statement.order_by(
+        TranscriptSegment.sequence_number.asc()
     )
 
     segments = list(
@@ -562,3 +578,80 @@ def delete_session(
 
     database.delete(meeting_session)
     database.commit()
+
+
+@router.post(
+    "/{session_id}/transcript/ai-response",
+    response_model=TranscriptSegmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def store_ai_transcript_response(
+    session_id: uuid.UUID,
+    request: AITranscriptResponseCreate,
+    database: Session = Depends(get_database),
+) -> TranscriptSegment:
+    meeting_session = get_session_or_404(
+        session_id=session_id,
+        database=database,
+    )
+
+    validate_deidentified(meeting_session)
+
+    response_text = request.text.strip()
+
+    if not response_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fox response text is empty.",
+        )
+
+    external_event_id = (
+        f"browser-realtime:{request.response_id.strip()}"
+    )[:300]
+
+    existing_segment = database.scalar(
+        select(TranscriptSegment).where(
+            TranscriptSegment.meeting_session_id
+            == session_id,
+            TranscriptSegment.external_event_id
+            == external_event_id,
+        )
+    )
+
+    if existing_segment is not None:
+        return existing_segment
+
+    max_sequence = database.scalar(
+        select(
+            func.max(
+                TranscriptSegment.sequence_number
+            )
+        ).where(
+            TranscriptSegment.meeting_session_id
+            == session_id
+        )
+    )
+
+    transcript_segment = TranscriptSegment(
+        meeting_session_id=session_id,
+        sequence_number=int(max_sequence or 0) + 1,
+        speaker_name=settings.bot_display_name,
+        text=response_text,
+        external_event_id=external_event_id,
+        is_ai_speaker=True,
+        contains_wake_phrase=False,
+    )
+
+    database.add(transcript_segment)
+    database.commit()
+    database.refresh(transcript_segment)
+
+    logger.info(
+        "Stored browser Fox response "
+        "session_id=%s sequence=%s characters=%s",
+        session_id,
+        transcript_segment.sequence_number,
+        len(response_text),
+    )
+
+    return transcript_segment
