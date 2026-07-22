@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.db.database import SessionLocal
@@ -158,14 +158,66 @@ def run_live_assistant_command(
         )
 
         database.add(response_record)
-        database.commit()
-        database.refresh(response_record)
+        database.flush()
+
+        fox_external_event_id = (
+            f"fox-command:{session_id}:"
+            f"{command_sequence_number}"
+        )
+
+        existing_fox_segment = database.scalar(
+            select(TranscriptSegment).where(
+                TranscriptSegment.meeting_session_id
+                == session_id,
+                TranscriptSegment.external_event_id
+                == fox_external_event_id,
+            )
+        )
+
+        if existing_fox_segment is None:
+            max_sequence = database.scalar(
+                select(
+                    func.max(
+                        TranscriptSegment.sequence_number
+                    )
+                ).where(
+                    TranscriptSegment.meeting_session_id
+                    == session_id
+                )
+            )
+
+            fox_segment = TranscriptSegment(
+                meeting_session_id=session_id,
+                sequence_number=(
+                    int(max_sequence or 0) + 1
+                ),
+                speaker_name=settings.bot_display_name,
+                text=answer.answer.strip(),
+                external_event_id=(
+                    fox_external_event_id
+                ),
+                is_ai_speaker=True,
+                contains_wake_phrase=False,
+            )
+
+            database.add(fox_segment)
 
         meeting_session.status = (
             SessionStatus.SPEAKING
         )
 
         database.commit()
+        database.refresh(response_record)
+
+        logger.info(
+            "Stored completed Fox response "
+            "session=%s response=%s "
+            "command_sequence=%s characters=%s",
+            session_id,
+            response_record.id,
+            command_sequence_number,
+            len(answer.answer.strip()),
+        )
 
         audio_file_name, _ = generate_speech(
             answer.answer
