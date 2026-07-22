@@ -228,6 +228,12 @@ export default function App() {
 
   const playedAudioUrlRef = useRef("");
 
+  const highestTranscriptSequenceRef =
+    useRef(0);
+
+  const transcriptPollingRef =
+    useRef(false);
+
 
   useEffect(() => {
     getHealth()
@@ -242,20 +248,113 @@ export default function App() {
   }, []);
 
   const refreshTranscript = useCallback(
-    async (targetSessionId = sessionId) => {
+    async (
+      targetSessionId = sessionId,
+      incremental = false
+    ) => {
       if (!targetSessionId) {
         return null;
       }
 
+      if (
+        incremental &&
+        transcriptPollingRef.current
+      ) {
+        return null;
+      }
+
+      if (incremental) {
+        transcriptPollingRef.current = true;
+      }
+
       try {
+        const afterSequence = incremental
+          ? highestTranscriptSequenceRef.current
+          : 0;
+
         const data = await getTranscript(
-          targetSessionId
+          targetSessionId,
+          afterSequence
         );
 
         const normalized =
           normalizeTranscript(data);
 
-        setTranscript(normalized);
+        if (!incremental) {
+          highestTranscriptSequenceRef.current =
+            normalized.segments.reduce(
+              (highest, segment) =>
+                Math.max(
+                  highest,
+                  Number(
+                    segment.sequence_number || 0
+                  )
+                ),
+              0
+            );
+
+          setTranscript(normalized);
+          return normalized;
+        }
+
+        if (normalized.segments.length === 0) {
+          return normalized;
+        }
+
+        setTranscript((currentTranscript) => {
+          const existingSegments =
+            currentTranscript?.segments || [];
+
+          const segmentsById = new Map();
+
+          for (const segment of existingSegments) {
+            const key =
+              segment.id ||
+              `sequence:${segment.sequence_number}`;
+
+            segmentsById.set(key, segment);
+          }
+
+          for (const segment of normalized.segments) {
+            const key =
+              segment.id ||
+              `sequence:${segment.sequence_number}`;
+
+            segmentsById.set(key, segment);
+          }
+
+          const mergedSegments = Array.from(
+            segmentsById.values()
+          ).sort(
+            (left, right) =>
+              Number(left.sequence_number || 0) -
+              Number(right.sequence_number || 0)
+          );
+
+          highestTranscriptSequenceRef.current =
+            mergedSegments.reduce(
+              (highest, segment) =>
+                Math.max(
+                  highest,
+                  Number(
+                    segment.sequence_number || 0
+                  )
+                ),
+              0
+            );
+
+          return {
+            ...currentTranscript,
+            segments: mergedSegments,
+            segment_count: mergedSegments.length,
+            transcript: mergedSegments
+              .map(
+                (segment) =>
+                  `${segment.speaker_name}: ${segment.text}`
+              )
+              .join("\n"),
+          };
+        });
 
         return normalized;
       } catch (caughtError) {
@@ -265,6 +364,10 @@ export default function App() {
         );
 
         return null;
+      } finally {
+        if (incremental) {
+          transcriptPollingRef.current = false;
+        }
       }
     },
     [sessionId]
@@ -302,20 +405,39 @@ export default function App() {
       return undefined;
     }
 
-    refreshTranscript();
-    refreshWebexStatus();
+    const terminalStatuses = new Set([
+      "disconnected",
+      "error",
+    ]);
+
+    if (terminalStatuses.has(webexStatus)) {
+      return undefined;
+    }
+
+    void refreshTranscript(
+      sessionId,
+      highestTranscriptSequenceRef.current > 0
+    );
+
+    void refreshWebexStatus();
 
     const interval = window.setInterval(() => {
-      refreshTranscript();
-      refreshWebexStatus();
-    }, 4000);
+      void refreshTranscript(
+        sessionId,
+        true
+      );
+
+      void refreshWebexStatus();
+    }, 2000);
 
     return () => {
       window.clearInterval(interval);
+      transcriptPollingRef.current = false;
     };
   }, [
     mode,
     sessionId,
+    webexStatus,
     refreshTranscript,
     refreshWebexStatus,
   ]);
@@ -572,6 +694,9 @@ export default function App() {
     setTranscript(normalizeTranscript(null));
     setRecallBotId("");
 
+    highestTranscriptSequenceRef.current = 0;
+    transcriptPollingRef.current = false;
+
     try {
       const result =
         await createRecallWebexSession({
@@ -669,6 +794,9 @@ export default function App() {
     setSelectedFile(null);
     setTranscript(normalizeTranscript(null));
     setAnalysisResult(null);
+
+    highestTranscriptSequenceRef.current = 0;
+    transcriptPollingRef.current = false;
     setMessage("");
     setError("");
   }
@@ -694,7 +822,13 @@ export default function App() {
       : workflowStage;
 
   const showAnalysisRealtimeFox =
-    mode === "transcript" || mode === "media";
+    mode === "transcript" ||
+    mode === "media" ||
+    (
+      mode === "webex" &&
+      Boolean(sessionId) &&
+      transcript.segment_count > 0
+    );
 
   const foxTranscriptionPending =
     mode === "media" &&
@@ -1053,6 +1187,7 @@ export default function App() {
             workflowStage ===
               "transcribing"
           }
+          showWebexTabs={mode === "webex"}
         />
           <AnalysisPanel
           result={analysisResult}
