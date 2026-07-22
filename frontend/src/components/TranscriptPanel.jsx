@@ -46,9 +46,7 @@ export default function TranscriptPanel({
             <h3>Waiting for content</h3>
 
             <p>
-              Upload a transcript or recording,
-              or begin speaking after the Recall.ai
-              bot joins Webex.
+              Add content to begin, or wait for live meeting speech.
             </p>
           </div>
         )}

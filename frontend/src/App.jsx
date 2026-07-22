@@ -45,23 +45,14 @@ import {
 
 
 import RealtimeFoxLauncher from "./components/RealtimeFoxLauncher";
-const SAMPLE_TRANSCRIPT = `Dr. Patel: This is a simulated and fully de-identified educational case.
-
-Dr. Patel: A patient with Crohn disease presents with worsening right lower-quadrant abdominal pain.
-
-Dr. Morgan: The patient reports intermittent fever and reduced appetite. Inflammatory markers are elevated despite biologic therapy.
-
-Dr. Patel: Cross-sectional imaging demonstrates terminal ileal thickening with an adjacent fluid collection.
-
-Moderator: The patient is currently hemodynamically stable.`;
 
 
 const INPUT_MODES = [
   {
     id: "webex",
-    title: "Live Webex",
+    title: "Live Meeting",
     description:
-      "Send Recall.ai into a live Webex meeting.",
+      "Connect Fox to a live meeting and capture the discussion.",
     icon: Video,
   },
   {
@@ -120,7 +111,7 @@ const STAGE_LABELS = {
   analyzing: "Analyzing",
   generating_voice: "Generating voice",
   completed: "Completed",
-  joining: "Joining Webex",
+  joining: "Joining meeting",
   listening: "Listening",
   failed: "Failed",
 };
@@ -211,7 +202,7 @@ export default function App() {
     useState("");
 
   const [pastedTranscript, setPastedTranscript] =
-    useState(SAMPLE_TRANSCRIPT);
+    useState("");
 
   const [selectedFile, setSelectedFile] =
     useState(null);
@@ -568,7 +559,7 @@ export default function App() {
   async function startWebexSession() {
     if (!webexUrl.trim()) {
       setError(
-        "Enter the complete Webex meeting URL."
+        "Enter the complete meeting URL."
       );
       return;
     }
@@ -587,7 +578,7 @@ export default function App() {
           meetingUrl: webexUrl.trim(),
           title:
             sessionTitle.trim() ||
-            "Live Webex session",
+            "Live Meeting session",
         });
 
       setSessionId(result.session_id);
@@ -867,7 +858,7 @@ export default function App() {
           <div className="mode-form">
             <div className="form-field">
               <label htmlFor="webex-url">
-                Webex meeting URL
+                Meeting URL
               </label>
 
               <div className="input-with-icon">
@@ -876,7 +867,7 @@ export default function App() {
                 <input
                   id="webex-url"
                   value={webexUrl}
-                  placeholder="https://your-site.webex.com/meet/..."
+                  placeholder="Paste a Webex, Teams, or Google Meet link"
                   onChange={(event) =>
                     setWebexUrl(
                       event.target.value
@@ -895,7 +886,7 @@ export default function App() {
               <Bot size={18} />
               {workflowStage === "joining"
                 ? "Creating bot…"
-                : "Send Fox to Webex"}
+                : "Send Fox to Meeting"}
             </button>
           </div>
         )}
@@ -910,6 +901,7 @@ export default function App() {
               <textarea
                 id="transcript-text"
                 rows={11}
+                placeholder="Paste a simulated or fully de-identified meeting transcript here..."
                 value={pastedTranscript}
                 onChange={(event) =>
                   setPastedTranscript(
@@ -925,7 +917,7 @@ export default function App() {
                 onClick={createPastedSession}
               >
                 <FileText size={18} />
-                Process pasted transcript
+                Use this transcript
               </button>
             </div>
 
@@ -969,7 +961,7 @@ export default function App() {
                   createTranscriptFileSession
                 }
               >
-                Upload and analyze
+                Upload transcript
               </button>
             </div>
           </div>
