@@ -40,6 +40,7 @@ import {
   getTranscript,
   pasteTranscript,
   uploadMedia,
+  uploadPresentation,
   uploadTranscript,
 } from "./lib/api";
 
@@ -68,6 +69,13 @@ const INPUT_MODES = [
     description:
       "Upload meeting audio or video.",
     icon: Film,
+  },
+  {
+    id: "presentation",
+    title: "Presentation",
+    description:
+      "Upload a PPTX and ask questions about its slides.",
+    icon: FileText,
   },
 ];
 
@@ -678,6 +686,49 @@ export default function App() {
   }
 
 
+  async function createPresentationSession() {
+    if (!selectedFile) {
+      setError("Choose a PPTX presentation first.");
+      return;
+    }
+
+    setWorkflowStage("creating_session");
+    setError("");
+    setMessage("");
+    setAnalysisResult(null);
+
+    try {
+      const session = await createSession({
+        title:
+          sessionTitle.trim() ||
+          selectedFile.name,
+        source: "transcript_upload",
+      });
+
+      setSessionId(session.id);
+      setWorkflowStage("uploading");
+      setMessage("Extracting presentation content...");
+
+      const uploadResult =
+        await uploadPresentation({
+          sessionId: session.id,
+          file: selectedFile,
+        });
+
+      setTranscript(
+        normalizeTranscript(uploadResult)
+      );
+      setWorkflowStage("ready");
+      setMessage(
+        "Presentation ready. Ask Fox or enter a question about the slides."
+      );
+    } catch (caughtError) {
+      setWorkflowStage("failed");
+      setError(formatError(caughtError));
+    }
+  }
+
+
   async function startWebexSession() {
     if (!webexUrl.trim()) {
       setError(
@@ -824,6 +875,7 @@ export default function App() {
   const showAnalysisRealtimeFox =
     mode === "transcript" ||
     mode === "media" ||
+    mode === "presentation" ||
     (
       mode === "webex" &&
       Boolean(sessionId) &&
@@ -1098,6 +1150,46 @@ export default function App() {
                 Upload transcript
               </button>
             </div>
+          </div>
+        )}
+
+        {mode === "presentation" && (
+          <div className="upload-area media-upload">
+            <FileText size={35} />
+
+            <strong>
+              Upload PowerPoint presentation
+            </strong>
+
+            <span>
+              PXTX only, maximum 25 MB
+            </span>
+
+            <input
+              type="file"
+              accept=".pptx"
+              onChange={(event) =>
+                setSelectedFile(
+                  event.target.files?.[0] ||
+                  null
+                )
+              }
+            />
+
+            {selectedFile && (
+              <div className="selected-file">
+                {selectedFile.name}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={isBusy || !selectedFile}
+              onClick={createPresentationSession}
+            >
+              Process presentation
+            </button>
           </div>
         )}
 

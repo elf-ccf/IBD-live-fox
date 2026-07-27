@@ -38,6 +38,7 @@ from app.schemas.session import (
     TranscriptPasteRequest,
     TranscriptSegmentResponse,
 )
+from app.services.presentation_parser import extract_presentation
 from app.services.transcript_parser import parse_transcript
 
 logger = logging.getLogger(__name__)
@@ -655,3 +656,109 @@ def store_ai_transcript_response(
     )
 
     return transcript_segment
+
+
+@router.post(
+    "/{session_id}/presentation/upload",
+    response_model=FullTranscriptResponse,
+)
+async def upload_presentation(
+    session_id: uuid.UUID,
+    file: UploadFile = File(...),
+    database: Session = Depends(get_database),
+):
+    meeting_session = get_session_or_404(
+        session_id=session_id,
+        database=database,
+    )
+    validate_deidentified(meeting_session)
+
+    file_name = file.filename or "presentation.pptx"
+    extension = Path(file_name).suffix.lower()
+    if extension != ".pptx":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PPTX presentation files are supported.",
+        )
+
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pptx",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            total_size = 0
+
+            while chunk := await file.read(1024 * 1024):
+                total_size += len(chunk)
+                if total_size > 25 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Presentation exceeds the 25 MB limit.",
+                    )
+                temporary_file.write(chunk)
+
+        extracted_slides = extract_presentation(temporary_path)
+
+        database.execute(
+            delete(TranscriptSegment).where(
+                TranscriptSegment.meeting_session_id
+                == meeting_session.id
+            )
+        )
+
+        stored_segments = []
+        for slide in extracted_slides:
+            section_text = slide.text.strip()
+            if section_text:
+                text = f"{slide.title}\n\n{section_text}"
+            else:
+                text = slide.title
+
+            stored_segments.append(
+                TranscriptSegment(
+                    meeting_session_id=meeting_session.id,
+                    sequence_number=slide.slide_number,
+                    speaker_name=f"Slide {slide.slide_number}",
+                    text=text,
+                    is_ai_speaker=False,
+                    contains_wake_phrase=False,
+                )
+            )
+
+        database.add_all(stored_segments)
+        meeting_session.status = SessionStatus.COMPLETED
+        meeting_session.original_file_name = file_name
+        database.commit()
+
+        for segment in stored_segments:
+            database.refresh(segment)
+
+        full_text = "\n".join(
+            f"{segment.speaker_name}: {segment.text}"
+            for segment in stored_segments
+        )
+
+        return FullTranscriptResponse(
+            session_id=meeting_session.id,
+            title=meeting_session.title,
+            source=meeting_session.source,
+            segment_count=len(stored_segments),
+            transcript=full_text,
+            segments=stored_segments,
+        )
+
+    except HTTPException:
+        database.rollback()
+        raise
+    except ValueError as error:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+    finally:
+        await file.close()
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
