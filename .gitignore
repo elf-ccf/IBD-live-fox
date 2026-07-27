@@ -43,3 +43,8 @@ uploads/
 # Temporary patch/backup files
 *.before-*
 *.backup
+
+backend/*.db
+backend/*.db-journal
+backend/*.sqlite
+backend/*.sqlite3
