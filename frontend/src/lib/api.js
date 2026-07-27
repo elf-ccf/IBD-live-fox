@@ -263,3 +263,20 @@ export function storeFoxResponse({
     }
   );
 }
+
+
+export function uploadPresentation({
+  sessionId,
+  file,
+}) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return request(
+    `/api/sessions/${sessionId}/presentation/upload`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+}
