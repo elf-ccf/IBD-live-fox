@@ -4,7 +4,6 @@ import {
   FileText,
   Film,
   FlaskConical,
-  Mic,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -27,7 +26,6 @@ import "./modern.css";
 import AnalysisPanel from "./components/AnalysisPanel";
 import StatusBadge from "./components/StatusBadge";
 import TranscriptPanel from "./components/TranscriptPanel";
-import VoiceAssistant from "./components/VoiceAssistant";
 
 import {
   ApiError,
@@ -53,7 +51,7 @@ const INPUT_MODES = [
     id: "webex",
     title: "Live Meeting",
     description:
-      "Connect Fox to a live meeting and capture the discussion.",
+      "Connect to a live online meeting and capture the discussion.",
     icon: Video,
   },
   {
@@ -82,29 +80,19 @@ const INPUT_MODES = [
 
 const QUICK_COMMANDS = [
   {
-    label: "Ask about this case",
+    label: "Summarize the case",
     prompt:
-      "What are the most important insights from this presentation?",
-  },
-  {
-    label: "Current evidence",
-    prompt:
-      "Search current reliable sources for information relevant to this presentation and explain the findings.",
-  },
-  {
-    label: "Latest guidance",
-    prompt:
-      "What is the latest authoritative guidance relevant to the topic discussed in this presentation?",
-  },
-  {
-    label: "Educational differential",
-    prompt:
-      "Provide an educational differential analysis grounded in the presentation and current reliable information.",
+      "Create a clinical vignette of the case that is being presented and provide a differential diagnosis and next steps in management. If this is not a clinical case, reply: This is not a clinical case.",
   },
   {
     label: "Missing information",
     prompt:
-      "What important information is missing before this case can be interpreted more confidently?",
+      "For this clinical case, what missing information would be important before this case can be interpreted more confidently? If this is not a clinical case, reply: This is not a clinical case.",
+  },
+  {
+    label: "Latest guidance",
+    prompt:
+      "Go online and find the latest authoritative guidance relevant to this clinical case. If this is not a clinical case, reply: This is not a clinical case.",
   },
 ];
 
@@ -204,7 +192,7 @@ export default function App() {
     useState("ready");
 
   const [sessionTitle, setSessionTitle] =
-    useState("IBD Educational Session");
+    useState("Clinical IQ Session");
 
   const [webexUrl, setWebexUrl] =
     useState("");
@@ -781,13 +769,15 @@ export default function App() {
 
     if (!sessionId) {
       setError(
-        "Add a transcript, recording, or Webex meeting first."
+        "Add a transcript, recording, or connect an online meeting first."
       );
       return;
     }
 
     if (!cleanedQuestion) {
-      setError("Enter a question for AI.");
+      setError(
+        "Enter a question for AI."
+      );
       return;
     }
 
@@ -843,7 +833,7 @@ export default function App() {
         : "offline"
     );
     setSelectedFile(null);
-    setTranscript(normalizeTranscript(null));
+    // Preserve transcript so content is not lost when switching tabs
     setAnalysisResult(null);
 
     highestTranscriptSequenceRef.current = 0;
@@ -902,7 +892,7 @@ export default function App() {
 
           <div>
             <strong>
-              IBD Live Fox Discussant
+              Clinical IQ
             </strong>
 
             <span>
@@ -945,7 +935,7 @@ export default function App() {
           </h1>
 
           <p>
-            Connect Webex, import a transcript, or
+            Connect an online meeting, import a transcript, or
             upload a recording. The system builds
             presentation context, produces an
             educational analysis, and generates an
@@ -1008,7 +998,7 @@ export default function App() {
 
             <h2>
               {mode === "webex" &&
-                "Connect a Webex meeting"}
+                "Connect an online meeting"}
               {mode === "transcript" &&
                 "Add a presentation transcript"}
 
@@ -1162,7 +1152,7 @@ export default function App() {
             </strong>
 
             <span>
-              PXTX only, maximum 25 MB
+              PXTX only, maximum 200 MB
             </span>
 
             <input
@@ -1281,29 +1271,7 @@ export default function App() {
           }
           showWebexTabs={mode === "webex"}
         />
-          <AnalysisPanel
-          result={analysisResult}
-          stage={workflowStage}
-          audioRef={audioRef}
-          onPlayAudio={playAudio}
-          onAudioPlay={() =>
-            setVoicePlaying(true)
-          }
-          onAudioEnded={() =>
-            setVoicePlaying(false)
-          }
-        />
       </section>
-
-      <VoiceAssistant
-        onCommand={submitQuestion}
-        disabled={
-          !sessionId ||
-          transcript.segment_count < 1
-        }
-        busy={isBusy}
-        speaking={voicePlaying}
-      />
 
       {showAnalysisRealtimeFox && (
         <RealtimeFoxLauncher
@@ -1321,8 +1289,8 @@ export default function App() {
             </div>
 
             <h2>
-              <Mic size={21} />
-              Continue the discussion
+              <Sparkles size={21} />
+              Ask a question
             </h2>
           </div>
 
@@ -1405,6 +1373,19 @@ export default function App() {
           </span>
         </div>
       </section>
+
+      <AnalysisPanel
+        result={analysisResult}
+        stage={workflowStage}
+        audioRef={audioRef}
+        onPlayAudio={playAudio}
+        onAudioPlay={() =>
+          setVoicePlaying(true)
+        }
+        onAudioEnded={() =>
+          setVoicePlaying(false)
+        }
+      />
     </main>
   );
 }

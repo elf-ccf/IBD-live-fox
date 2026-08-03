@@ -96,7 +96,7 @@ export default function TranscriptPanel({
   const emptyMessage =
     showWebexTabs && activeTab === "fox"
       ? (
-          "Completed IBD Live Fox responses " +
+          "Completed Clinical IQ responses " +
           "will appear here."
         )
       : showWebexTabs
@@ -107,8 +107,8 @@ export default function TranscriptPanel({
           )
         : (
             "Upload a transcript or recording, " +
-            "or begin speaking after the Recall.ai " +
-            "bot joins Webex."
+            "or begin speaking after the bot " +
+            "joins your meeting."
           );
 
   return (
@@ -129,7 +129,7 @@ export default function TranscriptPanel({
 
             {showWebexTabs
               ? activeTab === "fox"
-                ? "Fox Responses"
+                ? "Clinical IQ Responses"
                 : "Live Transcript"
               : "Transcript"}
           </h2>
@@ -144,7 +144,7 @@ export default function TranscriptPanel({
         <div
           className="transcript-tabs"
           role="tablist"
-          aria-label="Webex transcript views"
+          aria-label="Meeting transcript views"
         >
           <button
             type="button"
@@ -181,7 +181,7 @@ export default function TranscriptPanel({
             }
           >
             <Bot size={16} />
-            Fox Responses
+            Clinical IQ Responses
 
             {unreadFoxCount > 0 && (
               <span
@@ -218,8 +218,8 @@ export default function TranscriptPanel({
 
             <p>
               Upload a transcript or recording,
-              or begin speaking after the Recall.ai
-              bot joins Webex.
+              or begin speaking after the bot
+              joins your meeting.
             </p>
           </div>
         )}
@@ -245,7 +245,7 @@ export default function TranscriptPanel({
             <div className="segment-heading">
               <strong>
                 {segment.is_ai_speaker
-                  ? "IBD Live Fox"
+                  ? "Clinical IQ"
                   : segment.speaker_name ||
                     "Speaker"}
               </strong>

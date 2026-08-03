@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "IBD Live AI Discussant"
+    app_name: str = "Clinical IQ"
     app_env: str = "development"
     debug: bool = True
 

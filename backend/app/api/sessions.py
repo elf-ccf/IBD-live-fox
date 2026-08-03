@@ -692,10 +692,10 @@ async def upload_presentation(
 
             while chunk := await file.read(1024 * 1024):
                 total_size += len(chunk)
-                if total_size > 25 * 1024 * 1024:
+                if total_size > 200 * 1024 * 1024:
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail="Presentation exceeds the 25 MB limit.",
+                        detail="Presentation exceeds the 200 MB limit.",
                     )
                 temporary_file.write(chunk)
 

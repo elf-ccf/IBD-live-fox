@@ -78,7 +78,7 @@ export default function AnalysisPanel({
           <h3>Ask AI anything</h3>
 
           <p>
-            Type a question or say “Hey Fox” after allowing the microphone.
+            Type a question to analyze the meeting content.
           </p>
         </div>
       </section>
