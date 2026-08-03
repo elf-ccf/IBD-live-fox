@@ -62,13 +62,23 @@ else
   print_ok "Virtual environment already exists"
 fi
 
-# Activate
-# shellcheck disable=SC1091
-source "$VENV_DIR/bin/activate"
+# Activate (Unix venv uses bin/, Windows venv uses Scripts/)
+if [ -f "$VENV_DIR/bin/activate" ]; then
+  # shellcheck disable=SC1091
+  source "$VENV_DIR/bin/activate"
+  ACTIVATE_HINT="source $VENV_DIR/bin/activate"
+elif [ -f "$VENV_DIR/Scripts/activate" ]; then
+  # shellcheck disable=SC1091
+  source "$VENV_DIR/Scripts/activate"
+  ACTIVATE_HINT="source $VENV_DIR/Scripts/activate"
+else
+  print_err "Virtual environment activation script not found."
+  exit 1
+fi
 
 print_step "Installing Python dependencies"
-pip install --upgrade pip --quiet
-pip install -r backend/requirements.txt --quiet
+python -m pip install --upgrade pip --quiet
+python -m pip install -r backend/requirements.txt --quiet
 print_ok "Python packages installed"
 
 # ── 3. Create backend .env if missing ────────────────────────────────────────
@@ -102,7 +112,7 @@ echo ""
 echo "  To start the app, open two terminals:"
 echo ""
 echo "  Terminal 1 — backend:"
-echo "    source $VENV_DIR/bin/activate"
+echo "    ${ACTIVATE_HINT:-source $VENV_DIR/bin/activate}"
 echo "    cd backend"
 echo "    uvicorn main:app --reload --port 8000"
 echo ""
