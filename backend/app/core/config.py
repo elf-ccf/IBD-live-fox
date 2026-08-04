@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     wake_phrase: str = "hey ai"
     bot_display_name: str = "IBD Live AI"
     deidentified_only: bool = True
+    third_party_meeting_integrations_enabled: bool = False
     enable_webex_auto_agent: bool = False
 
     model_config = SettingsConfigDict(

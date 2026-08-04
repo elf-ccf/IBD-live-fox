@@ -44,10 +44,12 @@ app.add_middleware(
 app.include_router(sessions_router)
 app.include_router(assistant_router)
 app.include_router(speech_router)
-app.include_router(recall_router)
-app.include_router(recall_output_router)
 app.include_router(realtime_router)
-app.include_router(webex_realtime_router)
+
+if settings.third_party_meeting_integrations_enabled:
+    app.include_router(recall_router)
+    app.include_router(recall_output_router)
+    app.include_router(webex_realtime_router)
 
 
 @app.get("/")
@@ -80,8 +82,12 @@ def health_check() -> dict:
         "openai_configured": bool(
             settings.openai_api_key
         ),
-        "recall_configured": bool(
-            settings.recall_api_key
+        "third_party_meeting_integrations_enabled": (
+            settings.third_party_meeting_integrations_enabled
+        ),
+        "recall_configured": (
+            settings.third_party_meeting_integrations_enabled
+            and bool(settings.recall_api_key)
         ),
         "text_model": settings.openai_text_model,
         "tts_model": settings.openai_tts_model,
@@ -93,6 +99,9 @@ def health_check() -> dict:
 async def start_webex_auto_agent():
     import asyncio
 
-    if settings.enable_webex_auto_agent:
+    if (
+        settings.third_party_meeting_integrations_enabled
+        and settings.enable_webex_auto_agent
+    ):
         asyncio.create_task(webex_auto_agent_loop())
 

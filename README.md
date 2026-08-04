@@ -2,14 +2,9 @@ IBD Live Fox
 IBD Live Fox is a full-stack AI application for analyzing live meetings, transcripts, recordings, and PowerPoint presentations through written questions and browser-based voice interaction.
 
 Architecture
-Live meeting
-Meeting URL
-→ Recall.ai bot joins
-→ meeting speech is transcribed
-→ transcript webhook reaches FastAPI
-→ transcript segments are stored
-→ React displays live transcript updates
-→ user asks questions through Ask AI or Ask Fox
+Live meeting integrations are disabled by default and must not be enabled until
+the applicable organizational cybersecurity, software-intake, and hosting
+approvals have been completed.
 
 transcript
 Paste text or upload TXT, SRT, or VTT
@@ -53,9 +48,9 @@ OPENAI_TRANSCRIPTION_MODEL=gpt-4o-transcribe
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_VOICE=cedar
 
-# Recall.ai, required only for Live Meeting
-RECALL_API_KEY=REPLACE_WITH_APPROVED_RECALL_KEY
-RECALL_REGION_BASE_URL=https://us-west-2.recall.ai
+# Third-party meeting integrations remain disabled until formally approved
+THIRD_PARTY_MEETING_INTEGRATIONS_ENABLED=false
+ENABLE_WEBEX_AUTO_AGENT=false
 
 # Local value for Transcript, Recording, and Presentation testing
 PUBLIC_BASE_URL=http://127.0.0.1:8000
@@ -101,18 +96,16 @@ npm run build
 
 npm run dev -- --host 0.0.0.0 --port 5173
 
-Live Meeting Setup
+Compliance and deployment
 
-Live Meeting requires the FastAPI backend to have a public HTTPS address so Recall.ai can deliver transcript webhooks.
-
-For local testing, run ngrok in another terminal:
-
-
-ngrok http 8000
-
-PUBLIC_BASE_URL=https://REPLACE_WITH_NGROK_DOMAIN.ngrok-free.dev
-
-PUBLIC_BASE_URL=https://YOUR_DEPLOYED_BACKEND_DOMAIN
+- Do not use public tunneling utilities from managed workstation endpoints.
+- Do not connect Recall.ai or another third-party meeting bot unless the
+  software and intended data-processing workflow have formal approval.
+- Keep `THIRD_PARTY_MEETING_INTEGRATIONS_ENABLED=false` until those approvals
+  are documented and an approved hosting/API-gateway pattern is available.
+- Use only de-identified or synthetic educational content. Do not store PHI,
+  institutional meeting content, credentials, or organizational identifiers in
+  this public repository.
 
 Project Validation
 
